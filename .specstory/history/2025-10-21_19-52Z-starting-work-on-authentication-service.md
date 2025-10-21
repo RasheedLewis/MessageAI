@@ -632,3 +632,1623 @@ That resolves the “`credential(withProviderID:idToken:rawNonce:)` unavailable�
 
 ---
 
+_**User (2025-10-21 15:46Z)**_
+
+Now work on the subtasks for User Data Layer
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Designing Firestore user data models and repository**</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Define scope for user data layer including models and repository design before coding
+- [ ] Implement User and CreatorProfile models aligned with Firestore schema
+- [ ] Implement UserRepository with user creation, profile updates, and presence tracking
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning user data layer architecture**
+
+I'm outlining a detailed plan to build the user data layer, including defining Swift models for users and creator profiles, designing a Firestore-backed repository with async/await support, presence tracking, and managing Firebase app configuration. I’m also considering directory structure and reusing existing helpers while minimizing code duplication. Next, I’ll prepare the codebase with model and service directories before starting implementation.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && mkdir -p MessageAI/Services/Database
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && mkdir -p MessageAI/Models
+```
+
+---
+
+Could not find file '/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift' in the workspace.
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define scope for user data layer including models and repository design before coding
+- [ ] Implement User and CreatorProfile models aligned with Firestore schema
+- [ ] Implement UserRepository with user creation, profile updates, and presence tracking
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define scope for user data layer including models and repository design before coding
+- [-] Implement User and CreatorProfile models aligned with Firestore schema
+- [ ] Implement UserRepository with user creation, profile updates, and presence tracking
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift
++import Foundation
++
++public struct CreatorProfile: Codable, Equatable {
++    public var bio: String
++    public var faqTopics: [String]
++    public var voiceSamples: [String]
++    public var autoResponseEnabled: Bool
++    public var businessKeywords: [String]
++
++    public init(
++        bio: String = "",
++        faqTopics: [String] = [],
++        voiceSamples: [String] = [],
++        autoResponseEnabled: Bool = false,
++        businessKeywords: [String] = []
++    ) {
++        self.bio = bio
++        self.faqTopics = faqTopics
++        self.voiceSamples = voiceSamples
++        self.autoResponseEnabled = autoResponseEnabled
++        self.businessKeywords = businessKeywords
++    }
++}
++
++public struct User: Identifiable, Codable, Equatable {
++    public var id: String
++    public var displayName: String
++    public var email: String?
++    public var photoURL: URL?
++    public var isOnline: Bool
++    public var lastSeen: Date?
++    public var creatorProfile: CreatorProfile?
++
++    public init(
++        id: String,
++        displayName: String,
++        email: String? = nil,
++        photoURL: URL? = nil,
++        isOnline: Bool = false,
++        lastSeen: Date? = nil,
++        creatorProfile: CreatorProfile? = nil
++    ) {
++        self.id = id
++        self.displayName = displayName
++        self.email = email
++        self.photoURL = photoURL
++        self.isOnline = isOnline
++        self.lastSeen = lastSeen
++        self.creatorProfile = creatorProfile
++    }
++}
++
++// MARK: - Firestore DTOs
++
++extension User {
++    enum CodingKeys: String, CodingKey {
++        case id
++        case displayName
++        case email
++        case photoURL
++        case isOnline
++        case lastSeen
++        case creatorProfile
++    }
++
++    public init?(documentID: String, data: [String: Any]) {
++        guard let displayName = data["displayName"] as? String else {
++            return nil
++        }
++
++        let email = data["email"] as? String
++        let photoURL: URL?
++        if let photoURLString = data["photoURL"] as? String {
++            photoURL = URL(string: photoURLString)
++        } else {
++            photoURL = nil
++        }
++
++        let isOnline = data["isOnline"] as? Bool ?? false
++        let lastSeenTimestamp = data["lastSeen"] as? TimeInterval
++        let lastSeen: Date? = lastSeenTimestamp.map { Date(timeIntervalSince1970: $0) }
++
++        var creatorProfile: CreatorProfile?
++        if let profileData = data["creatorProfile"] as? [String: Any] {
++            creatorProfile = CreatorProfile(data: profileData)
++        }
++
++        self.init(
++            id: documentID,
++            displayName: displayName,
++            email: email,
++            photoURL: photoURL,
++            isOnline: isOnline,
++            lastSeen: lastSeen,
++            creatorProfile: creatorProfile
++        )
++    }
++
++    public func firestoreData() -> [String: Any] {
++        var data: [String: Any] = [
++            "displayName": displayName,
++            "isOnline": isOnline
++        ]
++
++        data["email"] = email
++        data["photoURL"] = photoURL?.absoluteString
++        data["lastSeen"] = lastSeen?.timeIntervalSince1970
++        data["creatorProfile"] = creatorProfile?.firestoreData()
++        return data
++    }
++}
++
++extension CreatorProfile {
++    enum CodingKeys: String, CodingKey {
++        case bio
++        case faqTopics
++        case voiceSamples
++        case autoResponseEnabled
++        case businessKeywords
++    }
++
++    init?(data: [String: Any]) {
++        guard let bio = data["bio"] as? String else {
++            return nil
++        }
++
++        let faqTopics = data["faqTopics"] as? [String] ?? []
++        let voiceSamples = data["voiceSamples"] as? [String] ?? []
++        let autoResponseEnabled = data["autoResponseEnabled"] as? Bool ?? false
++        let businessKeywords = data["businessKeywords"] as? [String] ?? []
++
++        self.init(
++            bio: bio,
++            faqTopics: faqTopics,
++            voiceSamples: voiceSamples,
++            autoResponseEnabled: autoResponseEnabled,
++            businessKeywords: businessKeywords
++        )
++    }
++
++    func firestoreData() -> [String: Any] {
++        [
++            "bio": bio,
++            "faqTopics": faqTopics,
++            "voiceSamples": voiceSamples,
++            "autoResponseEnabled": autoResponseEnabled,
++            "businessKeywords": businessKeywords
++        ]
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define scope for user data layer including models and repository design before coding
+- [x] Implement User and CreatorProfile models aligned with Firestore schema
+- [-] Implement UserRepository with user creation, profile updates, and presence tracking
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
++import Combine
++import FirebaseAuth
++import FirebaseFirestore
++import FirebaseFirestoreSwift
++
++public protocol UserRepositoryType {
++    var currentUserPublisher: AnyPublisher<User?, Never> { get }
++    func currentUser() -> User?
++    func listenToCurrentUser(uid: String)
++    func stopListening()
++    func createOrUpdateUser(_ user: User) async throws
++    func updatePresence(isOnline: Bool) async throws
++    func updateLastSeen(date: Date) async throws
++    func updateCreatorProfile(_ profile: CreatorProfile) async throws
++}
++
++public final class UserRepository: UserRepositoryType {
++    public static let shared = UserRepository()
++
++    private let firestore: Firestore
++    private let auth: Auth
++    private let userSubject = CurrentValueSubject<User?, Never>(nil)
++    private var userListener: ListenerRegistration?
++
++    public var currentUserPublisher: AnyPublisher<User?, Never> {
++        userSubject.eraseToAnyPublisher()
++    }
++
++    private init(firestore: Firestore = Firestore.firestore(), auth: Auth = Auth.auth()) {
++        self.firestore = firestore
++        self.auth = auth
++    }
++
++    public func currentUser() -> User? {
++        userSubject.value
++    }
++
++    public func listenToCurrentUser(uid: String) {
++        stopListening()
++        userListener = firestore
++            .collection(Collection.users.rawValue)
++            .document(uid)
++            .addSnapshotListener { [weak self] snapshot, error in
++                guard let self else { return }
++                if let error {
++                    print("[UserRepository] Failed to listen to user: \(error.localizedDescription)")
++                    return
++                }
++
++                guard let snapshot, snapshot.exists, let data = snapshot.data(),
++                      let user = User(documentID: snapshot.documentID, data: data) else {
++                    self.userSubject.send(nil)
++                    return
++                }
++
++                self.userSubject.send(user)
++            }
++    }
++
++    public func stopListening() {
++        userListener?.remove()
++        userListener = nil
++    }
++
++    public func createOrUpdateUser(_ user: User) async throws {
++        let data = user.firestoreData()
++        try await firestore
++            .collection(Collection.users.rawValue)
++            .document(user.id)
++            .setData(data, merge: true)
++    }
++
++    public func updatePresence(isOnline: Bool) async throws {
++        guard let uid = auth.currentUser?.uid else {
++            throw UserRepositoryError.missingAuthenticatedUser
++        }
++
++        let updates: [String: Any] = [
++            "isOnline": isOnline,
++            "lastSeen": FieldValue.serverTimestamp()
++        ]
++
++        try await firestore
++            .collection(Collection.users.rawValue)
++            .document(uid)
++            .setData(updates, merge: true)
++    }
++
++    public func updateLastSeen(date: Date = Date()) async throws {
++        guard let uid = auth.currentUser?.uid else {
++            throw UserRepositoryError.missingAuthenticatedUser
++        }
++
++        try await firestore
++            .collection(Collection.users.rawValue)
++            .document(uid)
++            .setData([
++                "lastSeen": Timestamp(date: date)
++            ], merge: true)
++    }
++
++    public func updateCreatorProfile(_ profile: CreatorProfile) async throws {
++        guard let uid = auth.currentUser?.uid else {
++            throw UserRepositoryError.missingAuthenticatedUser
++        }
++
++        try await firestore
++            .collection(Collection.users.rawValue)
++            .document(uid)
++            .setData([
++                "creatorProfile": profile.firestoreData()
++            ], merge: true)
++    }
++}
++
++// MARK: - Supporting Types
++
++public enum UserRepositoryError: LocalizedError {
++    case missingAuthenticatedUser
++
++    public var errorDescription: String? {
++        switch self {
++        case .missingAuthenticatedUser:
++            return "No authenticated user ID is available. Ensure the user is signed in."
++        }
++    }
++}
++
++private enum Collection: String {
++    case users = "users"
++}
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning user presence and profile handling**
+
+I'm thinking through adding presence tracking that handles online/offline states by updating user Firestore documents, even though Firestore lacks native onDisconnect support like Realtime DB. I'll consider methods like `configurePresenceListeners` or `startPresenceTracking` to mark online/offline with timestamps, and ensure user profile creation and updates work smoothly with optional CreatorProfile data. There’s also the need to properly initialize and fetch user data from FirebaseAuth, manage concurrency and main-thread updates, and finalize the repository implementation before marking tasks done and updating the plan.</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define scope for user data layer including models and repository design before coding
+- [x] Implement User and CreatorProfile models aligned with Firestore schema
+- [x] Implement UserRepository with user creation, profile updates, and presence tracking
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift
+@@
+-        let lastSeenTimestamp = data["lastSeen"] as? TimeInterval
+-        let lastSeen: Date? = lastSeenTimestamp.map { Date(timeIntervalSince1970: $0) }
++        let lastSeen: Date?
++        if let timestamp = data["lastSeen"] as? Timestamp {
++            lastSeen = timestamp.dateValue()
++        } else if let seconds = data["lastSeen"] as? TimeInterval {
++            lastSeen = Date(timeIntervalSince1970: seconds)
++        } else {
++            lastSeen = nil
++        }
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Adding missing FirebaseFirestore import**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift
+@@
+-import Foundation
++import Foundation
++import FirebaseFirestore
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing final summary**</details></think>
+
+---
+
+## User Data Layer
+
+- Added `User` and `CreatorProfile` models with Firestore bridging (`firestoreData()`, dictionary init) and support for `Timestamp` values. Extended models live in `MessageAI/Models/User.swift`.
+- Implemented `UserRepository` (`MessageAI/Services/Database/UserRepository.swift`) exposing Combine publisher, snapshot listener management, user CRUD, presence updates, and creator profile edits; includes custom error handling.
+
+Build in Xcode to verify Firebase SPM modules resolve (`FirebaseAuth`, `FirebaseFirestore`). Next, wire repository into auth flow and add corresponding tests (`MessageAITests/UserRepositoryTests.swift`).
+
+---
+
+_**User (2025-10-21 15:46Z)**_
+
+Yes the modules resolve.
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Confirming task completion**</details></think>
+
+---
+
+Great! With Firebase modules resolving, you’re clear to hook `AuthenticationService` and `UserRepository` into your view models and UI, then move on to the auth views or tests when ready.
+
+---
+
+_**User (2025-10-21 15:46Z)**_
+
+add the unit tests  **Unit Test:** `UserRepositoryTests.swift`
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Preparing to add unit tests**</details></think>
+
+---
+
+Model provided non-existent directory
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking test directory structure**</details></think>
+
+---
+
+Tool use: **list_dir**
+
+<details>
+            <summary>Listed directory undefined • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking for existing test targets**</details></think>
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "xctest" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI.xcodeproj" • 0 matches</summary>
+
+Output mode: content
+
+
+_No matches found_
+
+</details>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && mkdir -p MessageAITests
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift
++import Combine
++import FirebaseAuth
++import FirebaseFirestore
++import XCTest
++@testable import MessageAI
++
++final class UserRepositoryTests: XCTestCase {
++    private var cancellables: Set<AnyCancellable> = []
++    private var firestore: FirestoreMock!
++    private var auth: AuthMock!
++    private var repository: UserRepository!
++
++    override func setUp() {
++        super.setUp()
++        firestore = FirestoreMock()
++        auth = AuthMock()
++        repository = UserRepository(firestore: firestore, auth: auth)
++    }
++
++    override func tearDown() {
++        cancellables = []
++        repository = nil
++        auth = nil
++        firestore = nil
++        super.tearDown()
++    }
++
++    func testCreateOrUpdateUserPersistsData() async throws {
++        let user = User(
++            id: "user-123",
++            displayName: "Creator",
++            email: "creator@example.com",
++            photoURL: URL(string: "https://example.com/avatar.png"),
++            isOnline: true,
++            creatorProfile: CreatorProfile(bio: "Bio")
++        )
++
++        try await repository.createOrUpdateUser(user)
++
++        let storedData = firestore.setDataCalls[user.id]
++        XCTAssertNotNil(storedData)
++        XCTAssertEqual(storedData?["displayName"] as? String, "Creator")
++        XCTAssertEqual(storedData?["email"] as? String, "creator@example.com")
++        XCTAssertEqual(storedData?["isOnline"] as? Bool, true)
++    }
++
++    func testUpdatePresenceRequiresAuthenticatedUser() async {
++        auth.currentUserID = "user-123"
++
++        try? await repository.updatePresence(isOnline: true)
++
++        let updates = firestore.setDataCalls["user-123"]
++        XCTAssertEqual(updates?["isOnline"] as? Bool, true)
++        XCTAssertNotNil(updates?["lastSeen"])
++    }
++
++    func testUpdatePresenceWithoutAuthenticationThrows() async {
++        auth.currentUserID = nil
++
++        do {
++            try await repository.updatePresence(isOnline: true)
++            XCTFail("Expected missingAuthenticatedUser error")
++        } catch let error as UserRepositoryError {
++            XCTAssertEqual(error, .missingAuthenticatedUser)
++        } catch {
++            XCTFail("Unexpected error: \(error)")
++        }
++    }
++
++    func testUpdateCreatorProfilePersistsData() async throws {
++        auth.currentUserID = "user-456"
++        let profile = CreatorProfile(
++            bio: "Bio",
++            faqTopics: ["topic"],
++            voiceSamples: ["sample"],
++            autoResponseEnabled: true,
++            businessKeywords: ["brand"]
++        )
++
++        try await repository.updateCreatorProfile(profile)
++
++        let stored = firestore.setDataCalls["user-456"]?["creatorProfile"] as? [String: Any]
++        XCTAssertEqual(stored?["bio"] as? String, "Bio")
++        XCTAssertEqual(stored?["autoResponseEnabled"] as? Bool, true)
++    }
++
++    func testCurrentUserPublisherEmitsSnapshotUpdates() {
++        let expectation = expectation(description: "Publisher emits value")
++
++        var receivedUsers: [User?] = []
++        repository.currentUserPublisher
++            .sink { value in
++                receivedUsers.append(value)
++                if receivedUsers.count == 2 {
++                    expectation.fulfill()
++                }
++            }
++            .store(in: &cancellables)
++
++        repository.handleSnapshot(
++            data: [
++                "displayName": "Creator",
++                "isOnline": true
++            ],
++            documentID: "user-123"
++        )
++
++        wait(for: [expectation], timeout: 1.0)
++        XCTAssertEqual(receivedUsers.last??.displayName, "Creator")
++    }
++}
++
++// MARK: - Test Doubles
++
++private final class FirestoreMock: Firestore {
++    var setDataCalls: [String: [String: Any]] = [:]
++
++    override func collection(_ collectionPath: String) -> CollectionReference {
++        CollectionReferenceMock(mock: self, path: collectionPath)
++    }
++}
++
++private final class CollectionReferenceMock: CollectionReference {
++    private let mock: FirestoreMock
++    private let path: String
++
++    init(mock: FirestoreMock, path: String) {
++        self.mock = mock
++        self.path = path
++        super.init(path: path, firestore: mock)
++    }
++
++    override func document(_ documentPath: String) -> DocumentReference {
++        DocumentReferenceMock(mock: mock, path: "\(path)/\(documentPath)")
++    }
++}
++
++private final class DocumentReferenceMock: DocumentReference {
++    private let mock: FirestoreMock
++    private let documentPath: String
++
++    init(mock: FirestoreMock, path: String) {
++        self.mock = mock
++        self.documentPath = path
++        super.init(path: path, firestore: mock)
++    }
++
++    override func setData(_ documentData: [String: Any], merge: Bool) async throws {
++        mock.setDataCalls[documentPath] = documentData
++    }
++}
++
++private final class AuthMock: Auth {
++    var currentUserID: String?
++
++    override var currentUser: FirebaseAuth.User? {
++        guard let id = currentUserID else { return nil }
++        return MockUser(uid: id)
++    }
++}
++
++private struct MockUser: FirebaseAuth.User {
++    let uid: String
++
++    var isAnonymous: Bool { false }
++    var providerData: [UserInfo] { [] }
++    var refreshToken: String? { nil }
++    var providerID: String { "firebase" }
++    var displayName: String? { nil }
++    var email: String? { nil }
++    var phoneNumber: String? { nil }
++    var photoURL: URL? { nil }
++    var metadata: FirebaseAuth.UserMetadata { UserMetadataMock() }
++
++    func getIDToken(completion: @escaping (String?, Error?) -> Void) {}
++    func getIDTokenResult(completion: @escaping (AuthTokenResult?, Error?) -> Void) {}
++    func getIDTokenResult(forcingRefresh forceRefresh: Bool, completion: @escaping (AuthTokenResult?, Error?) -> Void) {}
++    func getIDToken(forcingRefresh forceRefresh: Bool, completion: @escaping (String?, Error?) -> Void) {}
++    func reload(completion: ((Error?) -> Void)?) {}
++    func delete(completion: ((Error?) -> Void)?) {}
++    func link(with credential: AuthCredential, completion: ((AuthDataResult?, Error?) -> Void)?) {}
++    func unlink(from provider: String, completion: ((User?, Error?) -> Void)?) {}
++    func sendEmailVerification(with completion: ((Error?) -> Void)?) {}
++    func sendEmailVerification(beforeUpdatingEmail email: String, completion: ((Error?) -> Void)?) {}
++    func updateEmail(to email: String, completion: ((Error?) -> Void)?) {}
++    func updatePassword(to password: String, completion: ((Error?) -> Void)?) {}
++    func updatePhoneNumber(_ credential: PhoneAuthCredential, completion: ((Error?) -> Void)?) {}
++    func updateProfile(_ changeRequest: UserProfileChangeRequest, completion: ((Error?) -> Void)?) {}
++    func reauthenticate(with credential: AuthCredential, completion: ((AuthDataResult?, Error?) -> Void)?) {}
++    func reauthenticate(with provider: FederatedAuthProvider, UXUIDelegate: AuthUIDelegate?, completion: ((AuthDataResult?, Error?) -> Void)?) {}
++    func reauthenticate(with provider: FederatedAuthProvider, completion: ((AuthDataResult?, Error?) -> Void)?) {}
++    func reauthenticate(with credential: AuthCredential) async throws -> AuthDataResult { throw NSError(domain: "", code: 0) }
++    func reauthenticate(with provider: FederatedAuthProvider) async throws -> AuthDataResult { throw NSError(domain: "", code: 0) }
++    func reauthenticate(with provider: FederatedAuthProvider, UXUIDelegate: AuthUIDelegate?) async throws -> AuthDataResult { throw NSError(domain: "", code: 0) }
++    func getIDTokenResult() async throws -> AuthTokenResult { throw NSError(domain: "", code: 0) }
++    func getIDToken() async throws -> String { throw NSError(domain: "", code: 0) }
++}
++
++private struct UserMetadataMock: FirebaseAuth.UserMetadata {
++    var creationDate: Date? { Date() }
++    var lastSignInDate: Date? { Date() }
++}
++
++private extension UserRepository {
++    convenience init(firestore: Firestore, auth: Auth) {
++        self.init()
++        self.setFirestore(firestore)
++        self.setAuth(auth)
++    }
++
++    func handleSnapshot(data: [String: Any], documentID: String) {
++        let user = User(documentID: documentID, data: data)
++        userSubject.send(user)
++    }
++
++    func setFirestore(_ firestore: Firestore) {
++        self.firestore = firestore
++    }
++
++    func setAuth(_ auth: Auth) {
++        self.auth = auth
++    }
++}
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Redesigning repository for testability**
+
+I'm rethinking the UserRepository's design to enable dependency injection via protocols for Firestore and Auth, since Firebase classes can't be subclassed or extended easily. I'll create lightweight protocols for user data storage and authentication, implement concrete Firestore adapters, and refactor repository and tests to use these abstractions, enabling mocking and better unit testing without relying on actual Firestore instances.</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Designing Firestore abstraction for testing**
+
+I'm working through a detailed plan to refactor `UserRepository` to depend on protocols that abstract Firestore and Auth, enabling injection of stub implementations for unit testing. Since Firestore's classes are final and hard to subclass, I'm defining protocols like `UserDocumentStore`, `UserDocumentReference`, and `AuthProviding`, with adapters wrapping real Firestore and Firebase Auth for production and mocks for tests. This will let me rewrite tests without relying on subclassing Firebase classes, providing controlled snapshots and simulating listener behavior. It's a major restructuring, but it should make the code much more testable and maintainable.
+**Planning repository and test refactor with protocol mocks**
+
+I'm outlining comprehensive test setups using mock implementations of the new Firestore and Auth protocols to simulate snapshot listeners, data setting, and user state. This includes mocks that store listener closures and allow emitting test snapshots, so I can verify repository behavior and event emissions. For full integration, I plan to rewrite the entire `UserRepository.swift` to adopt these protocols cleanly and prepare corresponding tests that exercise user state updates, presence, and listener management. This test-driven approach will help ensure the repository functions well without relying on real Firestore instances.</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "UserRepositoryTests" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 1 match</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `./MessageAITests/UserRepositoryTests.swift` | `final class UserRepositoryTests: XCTestCase \{` | L7 |
+
+
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Designing repository and test refactoring**
+
+This is a deep dive into restructuring the UserRepository to enable proper unit testing by introducing dependency injection via protocols for Firestore and Auth services. I'm figuring out how to abstract Firestore collections and documents, enable injecting mocks in tests, and handle Firebase classes that are tricky to subclass or instantiate. The plan includes creating lightweight protocols like UsersCollectionProviding and AuthSessionProviding, wrapping real Firebase classes in adapters, and updating UserRepository to depend on these abstractions—helping me write isolated tests without relying on actual Firebase runtime or hostile internal initializers. It's quite a detailed refactor, balancing testability with minimal disruption to production code.
+**Implementing snapshot abstraction and mocks**
+
+I'm designing a custom `UserSnapshot` struct and updating the repository's listener to use this instead of the raw Firestore `DocumentSnapshot`, which simplifies testability. To support this, I'm creating mocks like `UserDocumentMock` and `UsersCollectionMock` that hold snapshot listeners and simulate Firestore behavior in tests. These mocks include a `MockListenerRegistration` to track listener removals. This approach lets me trigger snapshot updates and errors manually during testing, making the repository easier to verify without relying on actual Firestore internals or complicated subclassing. I’m also adjusting the repository initializer and default implementations to fit with these abstractions while keeping compatibility with production Firestore and Auth.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+@@
+-import Combine
+-import FirebaseAuth
+-import FirebaseFirestore
+-import FirebaseFirestoreSwift
+-
+-public protocol UserRepositoryType {
+-    var currentUserPublisher: AnyPublisher<User?, Never> { get }
+-    func currentUser() -> User?
+-    func listenToCurrentUser(uid: String)
+-    func stopListening()
+-    func createOrUpdateUser(_ user: User) async throws
+-    func updatePresence(isOnline: Bool) async throws
+-    func updateLastSeen(date: Date) async throws
+-    func updateCreatorProfile(_ profile: CreatorProfile) async throws
+-}
+-
+-public final class UserRepository: UserRepositoryType {
+-    public static let shared = UserRepository()
+-
+-    private let firestore: Firestore
+-    private let auth: Auth
+-    private let userSubject = CurrentValueSubject<User?, Never>(nil)
+-    private var userListener: ListenerRegistration?
++import Combine
++import FirebaseAuth
++import FirebaseFirestore
++
++public protocol UserRepositoryType {
++    var currentUserPublisher: AnyPublisher<User?, Never> { get }
++    func currentUser() -> User?
++    func listenToCurrentUser(uid: String)
++    func stopListening()
++    func createOrUpdateUser(_ user: User) async throws
++    func updatePresence(isOnline: Bool) async throws
++    func updateLastSeen(date: Date) async throws
++    func updateCreatorProfile(_ profile: CreatorProfile) async throws
++}
++
++public protocol UsersCollectionProviding {
++    func document(_ documentID: String) -> UserDocumentReferenceProviding
++}
++
++public protocol UserDocumentReferenceProviding {
++    @discardableResult
++    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration
++    func setData(_ data: [String: Any], merge: Bool) async throws
++}
++
++public struct UserSnapshot {
++    public let documentID: String
++    public let data: [String: Any]?
++    public let exists: Bool
++}
++
++public protocol AuthSessionProviding {
++    var currentUserID: String? { get }
++}
++
++public final class UserRepository: UserRepositoryType {
++    public static let shared = UserRepository()
++
++    private let usersCollection: UsersCollectionProviding
++    private let authSession: AuthSessionProviding
++    private let userSubject = CurrentValueSubject<User?, Never>(nil)
++    private var userListener: ListenerRegistration?
+ 
+     public var currentUserPublisher: AnyPublisher<User?, Never> {
+         userSubject.eraseToAnyPublisher()
+     }
+ 
+-    private init(firestore: Firestore = Firestore.firestore(), auth: Auth = Auth.auth()) {
+-        self.firestore = firestore
+-        self.auth = auth
++    public init(
++        usersCollection: UsersCollectionProviding = FirestoreUsersCollection(),
++        authSession: AuthSessionProviding = Auth.auth()
++    ) {
++        self.usersCollection = usersCollection
++        self.authSession = authSession
+     }
+ 
+     public func currentUser() -> User? {
+         userSubject.value
+     }
+ 
+     public func listenToCurrentUser(uid: String) {
+         stopListening()
+-        userListener = firestore
+-            .collection(Collection.users.rawValue)
+-            .document(uid)
+-            .addSnapshotListener { [weak self] snapshot, error in
+-                guard let self else { return }
+-                if let error {
+-                    print("[UserRepository] Failed to listen to user: \(error.localizedDescription)")
+-                    return
+-                }
+-
+-                guard let snapshot, snapshot.exists, let data = snapshot.data(),
+-                      let user = User(documentID: snapshot.documentID, data: data) else {
+-                    self.userSubject.send(nil)
+-                    return
+-                }
+-
+-                self.userSubject.send(user)
+-            }
++        userListener = usersCollection
++            .document(uid)
++            .addSnapshotListener { [weak self] result in
++                guard let self else { return }
++                switch result {
++                case .failure(let error):
++                    print("[UserRepository] Failed to listen to user: \(error.localizedDescription)")
++                case .success(let snapshot):
++                    guard snapshot.exists,
++                          let data = snapshot.data,
++                          let user = User(documentID: snapshot.documentID, data: data) else {
++                        self.userSubject.send(nil)
++                        return
++                    }
++                    self.userSubject.send(user)
++                }
++            }
+     }
+ 
+     public func stopListening() {
+         userListener?.remove()
+         userListener = nil
+     }
+ 
+     public func createOrUpdateUser(_ user: User) async throws {
+         let data = user.firestoreData()
+-        try await firestore
+-            .collection(Collection.users.rawValue)
+-            .document(user.id)
+-            .setData(data, merge: true)
++        try await usersCollection
++            .document(user.id)
++            .setData(data, merge: true)
+     }
+ 
+     public func updatePresence(isOnline: Bool) async throws {
+-        guard let uid = auth.currentUser?.uid else {
++        guard let uid = authSession.currentUserID else {
+             throw UserRepositoryError.missingAuthenticatedUser
+         }
+ 
+         let updates: [String: Any] = [
+             "isOnline": isOnline,
+             "lastSeen": FieldValue.serverTimestamp()
+         ]
+ 
+-        try await firestore
+-            .collection(Collection.users.rawValue)
+-            .document(uid)
+-            .setData(updates, merge: true)
++        try await usersCollection
++            .document(uid)
++            .setData(updates, merge: true)
+     }
+ 
+     public func updateLastSeen(date: Date = Date()) async throws {
+-        guard let uid = auth.currentUser?.uid else {
++        guard let uid = authSession.currentUserID else {
+             throw UserRepositoryError.missingAuthenticatedUser
+         }
+ 
+-        try await firestore
+-            .collection(Collection.users.rawValue)
+-            .document(uid)
+-            .setData([
+-                "lastSeen": Timestamp(date: date)
+-            ], merge: true)
++        try await usersCollection
++            .document(uid)
++            .setData([
++                "lastSeen": Timestamp(date: date)
++            ], merge: true)
+     }
+ 
+     public func updateCreatorProfile(_ profile: CreatorProfile) async throws {
+-        guard let uid = auth.currentUser?.uid else {
++        guard let uid = authSession.currentUserID else {
+             throw UserRepositoryError.missingAuthenticatedUser
+         }
+ 
+-        try await firestore
+-            .collection(Collection.users.rawValue)
+-            .document(uid)
+-            .setData([
+-                "creatorProfile": profile.firestoreData()
+-            ], merge: true)
++        try await usersCollection
++            .document(uid)
++            .setData([
++                "creatorProfile": profile.firestoreData()
++            ], merge: true)
+     }
+ }
+ 
+ // MARK: - Supporting Types
+@@
+ private enum Collection: String {
+     case users = "users"
+ }
++
++// MARK: - Firebase Backed Implementations
++
++public struct FirestoreUsersCollection: UsersCollectionProviding {
++    private let collection: CollectionReference
++
++    public init(firestore: Firestore = Firestore.firestore()) {
++        collection = firestore.collection(Collection.users.rawValue)
++    }
++
++    public func document(_ documentID: String) -> UserDocumentReferenceProviding {
++        FirestoreUserDocumentReference(document: collection.document(documentID))
++    }
++}
++
++public struct FirestoreUserDocumentReference: UserDocumentReferenceProviding {
++    private let document: DocumentReference
++
++    public init(document: DocumentReference) {
++        self.document = document
++    }
++
++    @discardableResult
++    public func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration {
++        document.addSnapshotListener { snapshot, error in
++            if let error {
++                listener(.failure(error))
++            } else if let snapshot {
++                listener(.success(UserSnapshot(
++                    documentID: snapshot.documentID,
++                    data: snapshot.data(),
++                    exists: snapshot.exists
++                )))
++            }
++        }
++    }
++
++    public func setData(_ data: [String: Any], merge: Bool) async throws {
++        try await document.setData(data, merge: merge)
++    }
++}
++
++extension Auth: AuthSessionProviding {
++    public var currentUserID: String? {
++        currentUser?.uid
++    }
++}
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Adjusting Firebase imports and tests**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **delete_file**
+
+undefined
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Design test strategy and mocking approach for UserRepository unit tests
+- [ ] Implement UserRepositoryTests covering create/update, presence, and snapshot updates
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Design test strategy and mocking approach for UserRepository unit tests
+- [ ] Implement UserRepositoryTests covering create/update, presence, and snapshot updates
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Design test strategy and mocking approach for UserRepository unit tests
+- [-] Implement UserRepositoryTests covering create/update, presence, and snapshot updates
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift
++import Combine
++import XCTest
++@testable import MessageAI
++
++final class UserRepositoryTests: XCTestCase {
++    private var cancellables: Set<AnyCancellable> = []
++    private var usersCollection: UsersCollectionMock!
++    private var authSession: AuthSessionMock!
++    private var repository: UserRepository!
++
++    override func setUp() {
++        super.setUp()
++        usersCollection = UsersCollectionMock()
++        authSession = AuthSessionMock()
++        repository = UserRepository(usersCollection: usersCollection, authSession: authSession)
++    }
++
++    override func tearDown() {
++        cancellables.removeAll()
++        repository.stopListening()
++        repository = nil
++        authSession = nil
++        usersCollection = nil
++        super.tearDown()
++    }
++
++    func testCreateOrUpdateUserPersistsData() async throws {
++        let user = User(
++            id: "user-123",
++            displayName: "Creator",
++            email: "creator@example.com",
++            photoURL: URL(string: "https://example.com/avatar.png"),
++            isOnline: true,
++            creatorProfile: CreatorProfile(bio: "Bio")
++        )
++
++        try await repository.createOrUpdateUser(user)
++
++        let data = usersCollection.documentMocks[user.id]?.setDataPayload
++        XCTAssertEqual(data?["displayName"] as? String, "Creator")
++        XCTAssertEqual(data?["email"] as? String, "creator@example.com")
++        XCTAssertEqual(data?["isOnline"] as? Bool, true)
++    }
++
++    func testUpdatePresenceRequiresAuthenticatedUser() async throws {
++        authSession.currentUserID = "user-123"
++
++        try await repository.updatePresence(isOnline: true)
++
++        let payload = usersCollection.documentMocks["user-123"]?.setDataPayload
++        XCTAssertEqual(payload?["isOnline"] as? Bool, true)
++        XCTAssertNotNil(payload?["lastSeen"])
++    }
++
++    func testUpdatePresenceWithoutAuthenticationThrows() async {
++        authSession.currentUserID = nil
++
++        do {
++            try await repository.updatePresence(isOnline: true)
++            XCTFail("Expected missingAuthenticatedUser error")
++        } catch let error as UserRepositoryError {
++            XCTAssertEqual(error, .missingAuthenticatedUser)
++        } catch {
++            XCTFail("Unexpected error: \(error)")
++        }
++    }
++
++    func testUpdateCreatorProfilePersistsData() async throws {
++        authSession.currentUserID = "user-456"
++        let profile = CreatorProfile(
++            bio: "Bio",
++            faqTopics: ["topic"],
++            voiceSamples: ["sample"],
++            autoResponseEnabled: true,
++            businessKeywords: ["brand"]
++        )
++
++        try await repository.updateCreatorProfile(profile)
++
++        let data = usersCollection.documentMocks["user-456"]?.setDataPayload?["creatorProfile"] as? [String: Any]
++        XCTAssertEqual(data?["bio"] as? String, "Bio")
++        XCTAssertEqual(data?["autoResponseEnabled"] as? Bool, true)
++    }
++
++    func testCurrentUserPublisherEmitsUpdatesFromSnapshot() {
++        let expectation = expectation(description: "Publisher emits second value")
++
++        var received: [User?] = []
++        repository.currentUserPublisher
++            .sink { value in
++                received.append(value)
++                if received.count == 2 {
++                    expectation.fulfill()
++                }
++            }
++            .store(in: &cancellables)
++
++        repository.listenToCurrentUser(uid: "user-789")
++        let document = usersCollection.documentMocks["user-789"]!
++        document.simulateSnapshot(
++            UserSnapshot(
++                documentID: "user-789",
++                data: [
++                    "displayName": "Creator",
++                    "isOnline": true
++                ],
++                exists: true
++            )
++        )
++
++        wait(for: [expectation], timeout: 1.0)
++        XCTAssertEqual(received.last??.displayName, "Creator")
++        XCTAssertEqual(received.last??.id, "user-789")
++    }
++}
++
++// MARK: - Test Doubles
++
++private final class UsersCollectionMock: UsersCollectionProviding {
++    var documentMocks: [String: UserDocumentReferenceMock] = [:]
++
++    func document(_ documentID: String) -> UserDocumentReferenceProviding {
++        if let mock = documentMocks[documentID] {
++            return mock
++        }
++        let mock = UserDocumentReferenceMock(documentID: documentID)
++        documentMocks[documentID] = mock
++        return mock
++    }
++}
++
++private final class UserDocumentReferenceMock: UserDocumentReferenceProviding {
++    private let documentID: String
++    private var listeners: [(Result<UserSnapshot, Error>) -> Void] = []
++    var setDataPayload: [String: Any]?
++
++    init(documentID: String) {
++        self.documentID = documentID
++    }
++
++    @discardableResult
++    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration {
++        listeners.append(listener)
++        return ListenerRegistrationMock { [weak self] token in
++            self?.listeners.removeAll(where: { Comparator.isSameClosure($0, as: listener) })
++        }
++    }
++
++    func setData(_ data: [String: Any], merge: Bool) async throws {
++        setDataPayload = data
++    }
++
++    // Helpers
++    func simulateSnapshot(_ snapshot: UserSnapshot) {
++        listeners.forEach { $0(.success(snapshot)) }
++    }
++
++    func simulateError(_ error: Error) {
++        listeners.forEach { $0(.failure(error)) }
++    }
++}
++
++private final class ListenerRegistrationMock: ListenerRegistration {
++    private let cancellationHandler: (UUID) -> Void
++    private let token = UUID()
++
++    init(cancel: @escaping (UUID) -> Void) {
++        cancellationHandler = cancel
++    }
++
++    func remove() {
++        cancellationHandler(token)
++    }
++}
++
++private final class AuthSessionMock: AuthSessionProviding {
++    var currentUserID: String?
++}
++
++private enum Comparator {
++    static func isSameClosure(_ lhs: Any, as rhs: Any) -> Bool {
++        ObjectIdentifier(lhs as AnyObject) == ObjectIdentifier(rhs as AnyObject)
++    }
++}
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Refactoring ListenerRegistration usage**
+
+I'm updating tests and repository code to avoid direct Firebase dependencies by introducing a custom `ListenerRegistrationToken` protocol that replaces Firebase's `ListenerRegistration`. This lets me isolate Firebase imports to specific implementation files while keeping tests simple with mocks. I’ll redefine listener management to store and remove listeners via UUIDs, improving closure handling and enabling testability without relying on Firebase types directly.</details></think>
+
+---
+
+The model made no changes to the file.
+
+---
+
+<think><details><summary>Thought Process</summary>**Reevaluating patch due to context issues**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Redesigning ListenerRegistration mocks for tests**
+
+I’m working through how to better handle ListenerRegistration in tests since the Firebase type is a protocol not easy to instantiate. To fix closure removal challenges, I’ll switch to storing listeners in a dictionary keyed by UUID tokens and create a ListenerRegistrationMock that uses these tokens to remove listeners cleanly. This lets me remove the fragile closure comparison logic and keeps compatibility with the Firebase ListenerRegistration protocol. I’ll update mocks like UserDocumentReferenceMock accordingly and adjust tests to rely on this new token-based removal system.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift
+@@
+-private final class UserDocumentReferenceMock: UserDocumentReferenceProviding {
+-    private let documentID: String
+-    private var listeners: [(Result<UserSnapshot, Error>) -> Void] = []
+-    var setDataPayload: [String: Any]?
++private final class UserDocumentReferenceMock: UserDocumentReferenceProviding {
++    private let documentID: String
++    private var listeners: [UUID: (Result<UserSnapshot, Error>) -> Void] = [:]
++    var setDataPayload: [String: Any]?
+@@
+-    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration {
+-        listeners.append(listener)
+-        return ListenerRegistrationMock { [weak self] token in
+-            self?.listeners.removeAll(where: { Comparator.isSameClosure($0, as: listener) })
+-        }
++    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration {
++        let token = UUID()
++        listeners[token] = listener
++        return ListenerRegistrationMock(token: token) { [weak self] token in
++            self?.listeners.removeValue(forKey: token)
++        }
+@@
+-    func simulateSnapshot(_ snapshot: UserSnapshot) {
+-        listeners.forEach { $0(.success(snapshot)) }
++    func simulateSnapshot(_ snapshot: UserSnapshot) {
++        listeners.values.forEach { $0(.success(snapshot)) }
+     }
+ 
+     func simulateError(_ error: Error) {
+-        listeners.forEach { $0(.failure(error)) }
++        listeners.values.forEach { $0(.failure(error)) }
+     }
+ }
+ 
+ private final class ListenerRegistrationMock: ListenerRegistration {
+-    private let cancellationHandler: (UUID) -> Void
+-    private let token = UUID()
+-
+-    init(cancel: @escaping (UUID) -> Void) {
+-        cancellationHandler = cancel
+-    }
+-
+-    func remove() {
+-        cancellationHandler(token)
+-    }
++    private let token: UUID
++    private let cancellationHandler: (UUID) -> Void
++
++    init(token: UUID, cancel: @escaping (UUID) -> Void) {
++        self.token = token
++        cancellationHandler = cancel
++    }
++
++    func remove() {
++        cancellationHandler(token)
++    }
+ }
+ 
+ private final class AuthSessionMock: AuthSessionProviding {
+     var currentUserID: String?
+ }
+-
+-private enum Comparator {
+-    static func isSameClosure(_ lhs: Any, as rhs: Any) -> Bool {
+-        ObjectIdentifier(lhs as AnyObject) == ObjectIdentifier(rhs as AnyObject)
+-    }
+-}
+*** End Patch
+```
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "ListenerRegistration" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 6 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `./MessageAITests/UserRepositoryTests.swift` | `func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration \{` | L142 |
+| `./MessageAITests/UserRepositoryTests.swift` | `return ListenerRegistrationMock(token: token) \{ [weak self] token in` | L145 |
+| `./MessageAITests/UserRepositoryTests.swift` | `private final class ListenerRegistrationMock: ListenerRegistration \{` | L164 |
+| `./MessageAI/Services/Database/UserRepository.swift` | `func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration` | L22 |
+| `./MessageAI/Services/Database/UserRepository.swift` | `private var userListener: ListenerRegistration?` | L42 |
+| `./MessageAI/Services/Database/UserRepository.swift` | `public func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration \{` | L172 |
+
+
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+@@
+-public protocol UserDocumentReferenceProviding {
+-    @discardableResult
+-    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration
+-    func setData(_ data: [String: Any], merge: Bool) async throws
+-}
+-
+-public struct UserSnapshot {
+-    public let documentID: String
+-    public let data: [String: Any]?
+-    public let exists: Bool
+-}
++public protocol UserDocumentReferenceProviding {
++    @discardableResult
++    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerToken
++    func setData(_ data: [String: Any], merge: Bool) async throws
++}
++
++public protocol ListenerToken {
++    func remove()
++}
++
++public struct UserSnapshot {
++    public let documentID: String
++    public let data: [String: Any]?
++    public let exists: Bool
++}
+@@
+-    private var userListener: ListenerRegistration?
++    private var userListener: ListenerToken?
+@@
+-    public func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration {
+-        document.addSnapshotListener { snapshot, error in
+-            if let error {
+-                listener(.failure(error))
+-            } else if let snapshot {
+-                listener(.success(UserSnapshot(
+-                    documentID: snapshot.documentID,
+-                    data: snapshot.data(),
+-                    exists: snapshot.exists
+-                )))
+-            }
+-        }
++    public func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerToken {
++        FirestoreListenerToken(registration: document.addSnapshotListener { snapshot, error in
++            if let error {
++                listener(.failure(error))
++            } else if let snapshot {
++                listener(.success(UserSnapshot(
++                    documentID: snapshot.documentID,
++                    data: snapshot.data(),
++                    exists: snapshot.exists
++                )))
++            }
++        })
+     }
+@@
+ extension Auth: AuthSessionProviding {
+     public var currentUserID: String? {
+         currentUser?.uid
+     }
+ }
++
++private struct FirestoreListenerToken: ListenerToken {
++    private let registration: ListenerRegistration
++
++    init(registration: ListenerRegistration) {
++        self.registration = registration
++    }
++
++    func remove() {
++        registration.remove()
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/UserRepositoryTests.swift
+@@
+-    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerRegistration {
++    func addSnapshotListener(_ listener: @escaping (Result<UserSnapshot, Error>) -> Void) -> ListenerToken {
+         let token = UUID()
+         listeners[token] = listener
+         return ListenerRegistrationMock(token: token) { [weak self] token in
+             self?.listeners.removeValue(forKey: token)
+         }
+@@
+-private final class ListenerRegistrationMock: ListenerRegistration {
++private final class ListenerRegistrationMock: ListenerToken {
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Design test strategy and mocking approach for UserRepository unit tests
+- [x] Implement UserRepositoryTests covering create/update, presence, and snapshot updates
+
+---
+
+## UserRepository Unit Tests
+
+- Added `MessageAITests/UserRepositoryTests.swift` covering user create/update persistence, presence updates with/without auth, creator profile writes, and snapshot publishing via Combine. Implemented lightweight mocks for Firestore collections/documents, auth session, and listener tokens to avoid relying on Firebase classes.
+- Refined `MessageAI/Services/Database/UserRepository.swift` so it abstracts Firestore specifics behind protocols (`UsersCollectionProviding`, `UserDocumentReferenceProviding`, `ListenerToken`), enabling test injection. Added `FirestoreListenerToken` adapter.
+
+Tests rely on `ListenerToken` protocol rather than Firebase types; ensure `MessageAITests` target is configured in Xcode and run `Cmd+U` to execute.
+
+---
+
+_**User (2025-10-21 15:46Z)**_
+
+How do I ensure that the target is configured
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Outlining Xcode test target setup**</details></think>
+
+---
+
+- **Add/verify the test target**: In Xcode, select `MessageAI.xcodeproj`, click `+` at the bottom of the **Targets** list → choose *iOS Unit Testing Bundle* → name it `MessageAITests` (or select it if it already exists) and finish the wizard.
+- **Link the app target**: With `MessageAITests` highlighted, open the **General** tab → under *Target Dependencies* add the `MessageAI` app so `@testable import MessageAI` works.
+- **Include test sources**: In the Project Navigator, select `MessageAITests/UserRepositoryTests.swift` → the File Inspector (right panel) → tick the checkbox for the `MessageAITests` target under *Target Membership*.
+- **Share Firebase packages**: Still under `MessageAITests` → *Build Phases* → *Link Binary With Libraries* → add any frameworks your tests rely on (e.g. `FirebaseAuth`, `FirebaseFirestore`), matching what the app target links.
+- **Ensure test bundle location**: Under *Build Settings* for `MessageAITests`, confirm *Bundle Loader* and *Test Host* are left blank (default) so it runs standalone.
+- **Run configuration**: Select the `MessageAI` scheme → *Edit Scheme…* → *Test* section → make sure `MessageAITests` appears with its checkbox enabled; add it if missing.
+- **Build & run tests**: Press `Cmd+U` (or Product → Test) to verify the suite executes, resolving any missing dependencies that appear.
+
+Once those steps are done, your unit tests—including `UserRepositoryTests.swift`—will compile and run through the standard Xcode test workflow.
+
+---
+
