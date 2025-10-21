@@ -1,0 +1,61 @@
+# General macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# SwiftData & Core Data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# CocoaPods
+Pods/
+Podfile.lock
+
+# Carthage
+Carthage/Build/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Firebase & Secrets
+MessageAI/Resources/GoogleService-Info.plist
+.runtimeconfig.json
+.env
+PRD.md
+TASKS.md
+ARCH.mermaid
+
+# Logs & Diagnostics
+*.log
+*.crash
+*.ips
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Cache & Temporary
+*.swp
+*.swo
+*.idea/
+.vscode/
+tmp/
+
+
