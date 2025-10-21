@@ -20,6 +20,18 @@ public struct AuthenticatedUser: Equatable {
         displayName = firebaseUser.displayName
         photoURL = firebaseUser.photoURL
     }
+
+    public init(
+        uid: String,
+        email: String? = nil,
+        displayName: String? = nil,
+        photoURL: URL? = nil
+    ) {
+        self.uid = uid
+        self.email = email
+        self.displayName = displayName
+        self.photoURL = photoURL
+    }
 }
 
 /// Errors that can be surfaced by the authentication service.
@@ -47,10 +59,30 @@ public enum AuthenticationError: LocalizedError {
 }
 
 /// Handles Firebase authentication flows and exposes auth state updates via Combine.
+public protocol FirebaseAppConfiguring {
+    func configureIfNeeded()
+}
+
+protocol FirebaseAuthProviding: AnyObject {
+    var currentUser: AuthenticatedUser? { get }
+    func addStateDidChangeListener(_ listener: @escaping (AuthenticatedUser?) -> Void) -> AuthStateDidChangeListenerHandle
+    func removeStateDidChangeListener(_ handle: AuthStateDidChangeListenerHandle)
+    func signIn(with credential: AuthCredential) async throws -> AuthenticatedUser
+    func signOut() throws
+}
+
+protocol GoogleSignInHandling: AnyObject {
+    var configuration: GIDConfiguration? { get set }
+    func signIn(withPresenting viewController: UIViewController) async throws -> GIDSignInResult
+    func signOut()
+}
+
 public final class AuthenticationService: NSObject {
     public static let shared = AuthenticationService()
 
-    private let auth: Auth
+    private let authProvider: FirebaseAuthProviding
+    private let firebaseConfigurator: FirebaseAppConfiguring
+    private let googleSignIn: GoogleSignInHandling
     private var authStateDidChangeHandle: AuthStateDidChangeListenerHandle?
     private let authStateSubject: CurrentValueSubject<AuthenticatedUser?, Never>
     private var currentNonce: String?
@@ -63,20 +95,37 @@ public final class AuthenticationService: NSObject {
         authStateSubject.eraseToAnyPublisher()
     }
 
-    override private init() {
-        FirebaseAppConfigure.ensure()
-        auth = Auth.auth()
-        authStateSubject = CurrentValueSubject(auth.currentUser.map(AuthenticatedUser.init))
+    public override convenience init() {
+        self.init(
+            authProvider: FirebaseAuthWrapper(),
+            firebaseConfigurator: FirebaseAppConfiguration(),
+            googleSignIn: GoogleSignInWrapper.shared,
+            initialUser: nil
+        )
+    }
+
+    init(
+        authProvider: FirebaseAuthProviding,
+        firebaseConfigurator: FirebaseAppConfiguring,
+        googleSignIn: GoogleSignInHandling,
+        initialUser: AuthenticatedUser? = nil
+    ) {
+        self.authProvider = authProvider
+        self.firebaseConfigurator = firebaseConfigurator
+        self.googleSignIn = googleSignIn
+        firebaseConfigurator.configureIfNeeded()
+        let startingUser = initialUser ?? authProvider.currentUser
+        authStateSubject = CurrentValueSubject(startingUser)
         super.init()
-        authStateDidChangeHandle = auth.addStateDidChangeListener { [weak self] _, user in
+        authStateDidChangeHandle = authProvider.addStateDidChangeListener { [weak self] user in
             guard let self else { return }
-            self.authStateSubject.send(user.map(AuthenticatedUser.init))
+            self.authStateSubject.send(user)
         }
     }
 
     deinit {
         if let handle = authStateDidChangeHandle {
-            auth.removeStateDidChangeListener(handle)
+            authProvider.removeStateDidChangeListener(handle)
         }
     }
 
@@ -89,10 +138,10 @@ public final class AuthenticationService: NSObject {
         }
 
         let configuration = GIDConfiguration(clientID: clientID)
-        GIDSignIn.sharedInstance.configuration = configuration
+        googleSignIn.configuration = configuration
 
         do {
-            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: viewController)
+            let result = try await googleSignIn.signIn(withPresenting: viewController)
             guard let idTokenString = result.user.idToken?.tokenString else {
                 throw AuthenticationError.missingIDToken
             }
@@ -153,8 +202,8 @@ public final class AuthenticationService: NSObject {
 
     public func signOut() throws {
         do {
-            try auth.signOut()
-            GIDSignIn.sharedInstance.signOut()
+            try authProvider.signOut()
+            googleSignIn.signOut()
         } catch {
             throw AuthenticationError.underlying(error)
         }
@@ -164,8 +213,7 @@ public final class AuthenticationService: NSObject {
 
     private func signIn(with credential: AuthCredential) async throws -> AuthenticatedUser {
         do {
-            let authDataResult = try await auth.signIn(with: credential)
-            let authenticatedUser = AuthenticatedUser(firebaseUser: authDataResult.user)
+            let authenticatedUser = try await authProvider.signIn(with: credential)
             authStateSubject.send(authenticatedUser)
             return authenticatedUser
         } catch {
@@ -173,7 +221,7 @@ public final class AuthenticationService: NSObject {
         }
     }
 
-    private func randomNonceString(length: Int = 32) -> String {
+    func randomNonceString(length: Int = 32) -> String {
         precondition(length > 0)
         let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
         var result = ""
@@ -203,17 +251,64 @@ public final class AuthenticationService: NSObject {
     }
 }
 
-// MARK: - Firebase helper
+// MARK: - Dependency Implementations
 
-private enum FirebaseAppConfigure {
-    private static var hasConfigured = false
-
-    static func ensure() {
-        guard !hasConfigured else { return }
+struct FirebaseAppConfiguration: FirebaseAppConfiguring {
+    func configureIfNeeded() {
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
         }
-        hasConfigured = true
+    }
+}
+
+final class FirebaseAuthWrapper: FirebaseAuthProviding {
+    private let auth: Auth
+
+    init(auth: Auth = Auth.auth()) {
+        self.auth = auth
+    }
+
+    var currentUser: AuthenticatedUser? {
+        auth.currentUser.map(AuthenticatedUser.init)
+    }
+
+    func addStateDidChangeListener(_ listener: @escaping (AuthenticatedUser?) -> Void) -> AuthStateDidChangeListenerHandle {
+        auth.addStateDidChangeListener { _, user in
+            listener(user.map(AuthenticatedUser.init))
+        }
+    }
+
+    func removeStateDidChangeListener(_ handle: AuthStateDidChangeListenerHandle) {
+        auth.removeStateDidChangeListener(handle)
+    }
+
+    func signIn(with credential: AuthCredential) async throws -> AuthenticatedUser {
+        let result = try await auth.signIn(with: credential)
+        return AuthenticatedUser(firebaseUser: result.user)
+    }
+
+    func signOut() throws {
+        try auth.signOut()
+    }
+}
+
+final class GoogleSignInWrapper: GoogleSignInHandling {
+    static let shared = GoogleSignInWrapper()
+    private init() {}
+
+    private var instance: GIDSignIn { GIDSignIn.sharedInstance }
+
+    var configuration: GIDConfiguration? {
+        get { instance.configuration }
+        set { instance.configuration = newValue }
+    }
+
+    func signIn(withPresenting viewController: UIViewController) async throws -> GIDSignInResult {
+        try await instance.signIn(withPresenting: viewController)
+    }
+
+    func signOut() {
+        instance.signOut()
     }
 }
 
