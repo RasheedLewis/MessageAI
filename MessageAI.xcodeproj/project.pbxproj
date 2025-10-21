@@ -31,9 +31,22 @@
 		E5E9E3D12EA8287B00C44972 /* MessageAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MessageAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E52DD8442EA840E200004ACD /* Exceptions for "MessageAI" folder in "MessageAI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E53E49EE2EA73F4A00C4CCEF /* MessageAI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E53E49F12EA73F4A00C4CCEF /* MessageAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E52DD8442EA840E200004ACD /* Exceptions for "MessageAI" folder in "MessageAI" target */,
+			);
 			path = MessageAI;
 			sourceTree = "<group>";
 		};
@@ -359,6 +372,21 @@
 				DEVELOPMENT_TEAM = 9ZHMMBUMWP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleTypeRole = Editor;
+						CFBundleURLSchemes = (
+							"com.googleusercontent.apps.1058420116345-ol6vt3lqss95bufibf7v657vk1piv06a",
+						);
+					},
+				);
+				INFOPLIST_KEY_LSApplicationQueriesSchemes = (
+					"com.googleusercontent.apps.1058420116345-ol6vt3lqss95bufibf7v657vk1piv06a",
+					googlechromes,
+					"com.google.chrome.ios",
+					google,
+				);
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We use your photo library to let you choose a profile picture.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -391,6 +419,21 @@
 				DEVELOPMENT_TEAM = 9ZHMMBUMWP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleTypeRole = Editor;
+						CFBundleURLSchemes = (
+							"com.googleusercontent.apps.1058420116345-ol6vt3lqss95bufibf7v657vk1piv06a",
+						);
+					},
+				);
+				INFOPLIST_KEY_LSApplicationQueriesSchemes = (
+					"com.googleusercontent.apps.1058420116345-ol6vt3lqss95bufibf7v657vk1piv06a",
+					googlechromes,
+					"com.google.chrome.ios",
+					google,
+				);
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We use your photo library to let you choose a profile picture.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

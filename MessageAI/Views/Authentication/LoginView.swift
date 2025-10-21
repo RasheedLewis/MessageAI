@@ -31,9 +31,7 @@ struct LoginView: View {
                     signInWithGoogle()
                 } label: {
                     HStack {
-                        Image("google-logo")
-                            .resizable()
-                            .frame(width: 20, height: 20)
+                        GoogleGlyph()
                         Text("Continue with Google")
                             .fontWeight(.semibold)
                     }
@@ -98,6 +96,21 @@ struct LoginView: View {
 }
 
 #Preview {
-            LoginView(viewModel: AuthenticationViewModel())
+    LoginView(viewModel: AuthenticationViewModel())
+}
+
+private struct GoogleGlyph: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white)
+                .frame(width: 24, height: 24)
+                .shadow(color: Color.black.opacity(0.1), radius: 1, x: 0, y: 1)
+
+            Text("G")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color(red: 0.16, green: 0.32, blue: 0.75))
+        }
+    }
 }
 

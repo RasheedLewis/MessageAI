@@ -20,13 +20,16 @@ final class AuthenticationViewModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private let authService: AuthenticationService
     private let userRepository: UserRepositoryType
+    private let profilePhotoService: ProfilePhotoUploading
 
     init(
         authService: AuthenticationService = .shared,
-        userRepository: UserRepositoryType = UserRepository.shared
+        userRepository: UserRepositoryType = UserRepository.shared,
+        profilePhotoService: ProfilePhotoUploading = ProfilePhotoService.shared
     ) {
         self.authService = authService
         self.userRepository = userRepository
+        self.profilePhotoService = profilePhotoService
 
         authService.authStatePublisher
             .receive(on: DispatchQueue.main)
@@ -103,14 +106,20 @@ final class AuthenticationViewModel: ObservableObject {
 
         state = .loading
 
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         var updatedUser = User(
             id: user.uid,
-            displayName: displayName.isEmpty ? (user.displayName ?? "") : displayName,
+            displayName: trimmedName.isEmpty ? (user.displayName ?? "") : trimmedName,
             email: user.email,
             photoURL: photoURL
         )
 
         do {
+            if let imageData = selectedImageData {
+                let uploadedURL = try await profilePhotoService.uploadProfilePhoto(data: imageData, for: user.uid)
+                updatedUser.photoURL = uploadedURL
+            }
+
             try await userRepository.createOrUpdateUser(updatedUser)
             state = .authenticated
         } catch {

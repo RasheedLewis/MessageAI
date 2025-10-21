@@ -1,3 +1,4 @@
+import Photos
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -8,6 +9,9 @@ struct ProfileSetupView: View {
     @State private var profileImage: Image?
     @State private var isSaving = false
     @FocusState private var isNameFieldFocused: Bool
+    @State private var photoAuthorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    @State private var showPhotoSettingsAlert = false
+    @State private var imageLoadErrorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -57,6 +61,9 @@ struct ProfileSetupView: View {
         .onAppear {
             isNameFieldFocused = true
         }
+        .task {
+            await refreshPhotoAuthorizationStatus()
+        }
         .alert("Profile Setup Error", isPresented: Binding(
             get: { viewModel.error != nil },
             set: { if !$0 { viewModel.error = nil } }
@@ -64,6 +71,24 @@ struct ProfileSetupView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.error ?? "Unknown error")
+        }
+        .alert("Photo Access Required", isPresented: $showPhotoSettingsAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Allow MessageAI to access your photo library from Settings to upload a profile picture.")
+        }
+        .alert("Photo Error", isPresented: Binding(
+            get: { imageLoadErrorMessage != nil },
+            set: { if !$0 { imageLoadErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(imageLoadErrorMessage ?? "Unknown error")
         }
     }
 
@@ -89,12 +114,26 @@ struct ProfileSetupView: View {
                 }
             }
 
-            PhotosPicker(selection: $selectedItem, matching: .images) {
-                Text("Upload Photo")
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor))
+            Group {
+                if photoAuthorizationStatus == .denied || photoAuthorizationStatus == .restricted {
+                    Button {
+                        showPhotoSettingsAlert = true
+                    } label: {
+                        Text("Enable Photo Access")
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).stroke(Color.red))
+                    }
+                } else {
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        Text(profileImage == nil ? "Upload Photo" : "Change Photo")
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor))
+                    }
+                }
             }
         }
     }
@@ -104,13 +143,28 @@ struct ProfileSetupView: View {
     }
 
     private func loadImage(from pickerItem: PhotosPickerItem) async {
-        guard let data = try? await pickerItem.loadTransferable(type: Data.self),
-              let uiImage = UIImage(data: data) else {
-            return
-        }
+        do {
+            guard let data = try await pickerItem.loadTransferable(type: Data.self) else {
+                await MainActor.run {
+                    imageLoadErrorMessage = "Unable to read the selected photo."
+                }
+                return
+            }
 
-        await MainActor.run {
-            profileImage = Image(uiImage: uiImage)
+            guard let uiImage = UIImage(data: data) else {
+                await MainActor.run {
+                    imageLoadErrorMessage = "The selected file could not be converted into an image."
+                }
+                return
+            }
+
+            await MainActor.run {
+                profileImage = Image(uiImage: uiImage)
+            }
+        } catch {
+            await MainActor.run {
+                imageLoadErrorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -125,6 +179,20 @@ struct ProfileSetupView: View {
         let renderer = ImageRenderer(content: image)
         renderer.scale = UIScreen.main.scale
         return renderer.uiImage
+    }
+
+    private func refreshPhotoAuthorizationStatus() async {
+        let currentStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if currentStatus == .notDetermined {
+            let grantedStatus = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            await MainActor.run {
+                photoAuthorizationStatus = grantedStatus
+            }
+        } else {
+            await MainActor.run {
+                photoAuthorizationStatus = currentStatus
+            }
+        }
     }
 }
 
