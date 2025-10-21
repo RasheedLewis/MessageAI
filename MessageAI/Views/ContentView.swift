@@ -1,24 +1,31 @@
-//
-//  ContentView.swift
-//  MessageAI
-//
-//  Created by Rasheed Lewis on 10/21/25.
-//
-
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            VStack(spacing: 24) {
+                Text("MessageAI Home")
+                    .font(.largeTitle.bold())
+
+                Text("The core messaging experience will appear here.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+
+                NavigationLink("Open Conversations") {
+                    Text("Conversation list placeholder")
+                        .font(.headline)
+                        .padding()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
+            .background(Color(.systemGroupedBackground))
         }
-        .padding()
     }
 }
 
 #Preview {
     ContentView()
 }
+

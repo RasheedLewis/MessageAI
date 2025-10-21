@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 struct LoginView: View {
-    @StateObject private var viewModel = AuthenticationViewModel()
+    @ObservedObject var viewModel: AuthenticationViewModel
     @State private var isShowingAlert = false
 
     var body: some View {
@@ -98,6 +98,6 @@ struct LoginView: View {
 }
 
 #Preview {
-    LoginView()
+            LoginView(viewModel: AuthenticationViewModel())
 }
 
