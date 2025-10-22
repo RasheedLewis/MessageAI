@@ -28,12 +28,6 @@ final class LocalConversation {
     var pendingUploadCount: Int
     var pendingDownloadCount: Int
 
-    @Relationship(deleteRule: .cascade, inverse: \LocalMessage.conversation)
-    var messages: [LocalMessage] = []
-
-    @Relationship(deleteRule: .nullify, inverse: \LocalUser.conversations)
-    var participants: [LocalUser] = []
-
     init(
         id: String,
         title: String,

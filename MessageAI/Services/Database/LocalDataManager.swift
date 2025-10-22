@@ -17,14 +17,6 @@ enum LocalDataManagerError: Error, CustomStringConvertible {
 
 @MainActor
 final class LocalDataManager {
-    static let shared: LocalDataManager = {
-        do {
-            return try LocalDataManager()
-        } catch {
-            fatalError("Failed to initialize LocalDataManager: \(error)")
-        }
-    }()
-
     let container: ModelContainer
     let context: ModelContext
 
@@ -74,35 +66,39 @@ final class LocalDataManager {
     }
 
     func conversation(withID id: String) throws -> LocalConversation? {
-        let descriptor = FetchDescriptor<LocalConversation>(
-            predicate: #Predicate { conversation in
+        var descriptor = FetchDescriptor<LocalConversation>(
+            predicate: #Predicate<LocalConversation> { conversation in
                 conversation.id == id
-            },
-            fetchLimit: 1
+            }
         )
+        descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
     }
 
     func fetchConversations(limit: Int? = nil) throws -> [LocalConversation] {
-        var descriptor = FetchDescriptor<LocalConversation>(
-            sortBy: [
-                SortDescriptor(
-                    \LocalConversation.lastMessageTimestamp,
-                    order: .reverse
-                ),
-                SortDescriptor(\LocalConversation.title)
-            ]
-        )
+        let descriptor = FetchDescriptor<LocalConversation>()
+        let conversations = try context.fetch(descriptor)
 
-        if let limit {
-            descriptor.fetchLimit = limit
+        let sorted = conversations.sorted { lhs, rhs in
+            let lhsDate = lhs.lastMessageTimestamp ?? .distantPast
+            let rhsDate = rhs.lastMessageTimestamp ?? .distantPast
+
+            if lhsDate == rhsDate {
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+
+            return lhsDate > rhsDate
         }
 
-        return try context.fetch(descriptor)
+        if let limit {
+            return Array(sorted.prefix(limit))
+        }
+
+        return sorted
     }
 
     func deleteConversation(_ conversation: LocalConversation) throws {
-        if let existing = try conversation(withID: conversation.id) {
+        if let existing = try self.conversation(withID: conversation.id) {
             context.delete(existing)
             try context.save()
         }
@@ -116,7 +112,6 @@ final class LocalDataManager {
         }
 
         if message.modelContext == nil {
-            conversation.messages.append(message)
             message.conversation = conversation
             context.insert(message)
         }
@@ -136,10 +131,12 @@ final class LocalDataManager {
         createDefault: @autoclosure () -> LocalMessage,
         updates: (LocalMessage) -> Void
     ) throws {
-        let descriptor = FetchDescriptor<LocalMessage>(
-            predicate: #Predicate { $0.id == id },
-            fetchLimit: 1
+        var descriptor = FetchDescriptor<LocalMessage>(
+            predicate: #Predicate<LocalMessage> { message in
+                message.id == id
+            }
         )
+        descriptor.fetchLimit = 1
 
         let target: LocalMessage
         if let existing = try context.fetch(descriptor).first {
@@ -163,16 +160,8 @@ final class LocalDataManager {
         limit: Int? = nil,
         includeFailed: Bool = true
     ) throws -> [LocalMessage] {
-        let predicate: Predicate<LocalMessage>
-
-        if includeFailed {
-            predicate = #Predicate { message in
-                message.conversationID == conversationID
-            }
-        } else {
-            predicate = #Predicate { message in
-                message.conversationID == conversationID && message.syncStatus != .failed
-            }
+        let predicate = #Predicate<LocalMessage> { message in
+            message.conversationID == conversationID
         }
 
         var descriptor = FetchDescriptor<LocalMessage>(
@@ -186,14 +175,22 @@ final class LocalDataManager {
             descriptor.fetchLimit = limit
         }
 
-        return try context.fetch(descriptor)
+        var messages = try context.fetch(descriptor)
+
+        if !includeFailed {
+            messages.removeAll { $0.syncStatus == .failed }
+        }
+
+        return messages
     }
 
     func message(withID id: String) throws -> LocalMessage {
-        let descriptor = FetchDescriptor<LocalMessage>(
-            predicate: #Predicate { $0.id == id },
-            fetchLimit: 1
+        var descriptor = FetchDescriptor<LocalMessage>(
+            predicate: #Predicate<LocalMessage> { message in
+                message.id == id
+            }
         )
+        descriptor.fetchLimit = 1
 
         guard let message = try context.fetch(descriptor).first else {
             throw LocalDataManagerError.messageNotFound(id)
@@ -286,8 +283,9 @@ final class LocalDataManager {
     // MARK: - Helpers
 
     private func updateConversationSummary(for conversation: LocalConversation) {
-        let messages = conversation.messages.sorted { $0.timestamp < $1.timestamp }
-        if let latestMessage = messages.max(by: { $0.timestamp < $1.timestamp }) {
+        let messages = (try? fetchMessages(forConversationID: conversation.id)) ?? []
+
+        if let latestMessage = messages.last {
             conversation.lastMessageTimestamp = latestMessage.timestamp
             if !latestMessage.content.isEmpty {
                 conversation.lastMessagePreview = latestMessage.content
@@ -301,17 +299,13 @@ final class LocalDataManager {
             conversation.lastMessagePreview = nil
         }
 
-        conversation.pendingUploadCount = messages.reduce(into: 0) { result, message in
-            if message.syncDirection == .upload && message.syncStatus != .synced {
-                result += 1
-            }
-        }
+        conversation.pendingUploadCount = messages.filter { message in
+            message.syncDirection == .upload && message.syncStatus != .synced
+        }.count
 
-        conversation.pendingDownloadCount = messages.reduce(into: 0) { result, message in
-            if message.syncDirection == .download && message.syncStatus != .synced {
-                result += 1
-            }
-        }
+        conversation.pendingDownloadCount = messages.filter { message in
+            message.syncDirection == .download && message.syncStatus != .synced
+        }.count
     }
 }
 

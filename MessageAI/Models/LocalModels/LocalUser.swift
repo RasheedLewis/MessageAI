@@ -12,12 +12,6 @@ final class LocalUser {
     var isCurrentUser: Bool
     var lastSyncedAt: Date?
 
-    @Relationship(deleteRule: .nullify, inverse: \LocalConversation.participants)
-    var conversations: [LocalConversation] = []
-
-    @Relationship(deleteRule: .nullify, inverse: \LocalMessage.sender)
-    var sentMessages: [LocalMessage] = []
-
     init(
         id: String,
         displayName: String,
