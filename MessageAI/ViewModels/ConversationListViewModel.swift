@@ -42,13 +42,12 @@ final class ConversationListViewModel: ObservableObject {
     private var listenerService: MessageListenerServiceProtocol { services.messageListenerService }
     private var currentUserID: String { services.currentUserID }
 
-    private let services: ServiceResolver
+    let services: ServiceResolver
+    private var cancellables: Set<AnyCancellable> = []
 
     init(services: ServiceResolver) {
         self.services = services
-        self.services.messageListenerService.conversationUpdateHandler = { [weak self] in
-            self?.refresh()
-        }
+        setupBindings()
     }
 
     private var allConversations: [ConversationItem] = []
@@ -71,6 +70,14 @@ final class ConversationListViewModel: ObservableObject {
 
     func refresh() {
         fetchLocalConversations()
+    }
+
+    private func setupBindings() {
+        listenerService.conversationUpdatesPublisher
+            .sink { [weak self] in
+                self?.refresh()
+            }
+            .store(in: &cancellables)
     }
 
     private func fetchLocalConversations() {

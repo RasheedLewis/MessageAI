@@ -1,8 +1,10 @@
+import Combine
 import FirebaseFirestore
 import Foundation
 
 protocol MessageListenerServiceProtocol: AnyObject {
-    var conversationUpdateHandler: (() -> Void)? { get set }
+    var conversationUpdatesPublisher: AnyPublisher<Void, Never> { get }
+    var messageUpdatesPublisher: AnyPublisher<String, Never> { get }
     func startConversationListener(
         for userID: String,
         onError: ((Error) -> Void)?
@@ -22,7 +24,8 @@ protocol MessageListenerServiceProtocol: AnyObject {
 }
 
 final class MessageListenerService: MessageListenerServiceProtocol {
-    var conversationUpdateHandler: (() -> Void)?
+    private let conversationUpdatesSubject = PassthroughSubject<Void, Never>()
+    private let messageUpdatesSubject = PassthroughSubject<String, Never>()
 
     private enum FirestoreKey {
         static let conversationsCollection = "conversations"
@@ -38,6 +41,14 @@ final class MessageListenerService: MessageListenerServiceProtocol {
 
     private var conversationListener: ListenerRegistration?
     private var messageListeners: [String: ListenerRegistration] = [:]
+
+    var conversationUpdatesPublisher: AnyPublisher<Void, Never> {
+        conversationUpdatesSubject.eraseToAnyPublisher()
+    }
+
+    var messageUpdatesPublisher: AnyPublisher<String, Never> {
+        messageUpdatesSubject.eraseToAnyPublisher()
+    }
 
     init(
         localDataManager: LocalDataManager,
@@ -143,7 +154,7 @@ final class MessageListenerService: MessageListenerServiceProtocol {
                         currentUserID: currentUserID
                     )
                 case .removed:
-                    self.handleMessageRemoval(messageID: message.id)
+                    self.handleMessageRemoval(messageID: message.id, conversationID: conversationID)
                 }
             }
         }
@@ -188,7 +199,7 @@ final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to upsert local conversation: \(error)")
             #endif
         }
-        conversationUpdateHandler?()
+        conversationUpdatesSubject.send()
     }
 
     private func handleConversationRemoval(conversationID: String) {
@@ -201,7 +212,7 @@ final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to delete local conversation: \(error)")
             #endif
         }
-        conversationUpdateHandler?()
+        conversationUpdatesSubject.send()
     }
 
     private func makeLocalConversation(from conversation: Conversation) -> LocalConversation {
@@ -258,10 +269,11 @@ final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to upsert local message: \(error)")
             #endif
         }
-        conversationUpdateHandler?()
+        conversationUpdatesSubject.send()
+        messageUpdatesSubject.send(conversationID)
     }
 
-    private func handleMessageRemoval(messageID: String) {
+    private func handleMessageRemoval(messageID: String, conversationID: String) {
         do {
             try localDataManager.deleteMessage(withID: messageID)
         } catch {
@@ -269,7 +281,8 @@ final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to delete local message: \(error)")
             #endif
         }
-        conversationUpdateHandler?()
+        conversationUpdatesSubject.send()
+        messageUpdatesSubject.send(conversationID)
     }
 
     private func makeLocalMessage(

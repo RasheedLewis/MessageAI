@@ -47,7 +47,7 @@ struct ConversationListView: View {
             } else {
                 List(viewModel.conversations) { conversation in
                     NavigationLink {
-                        ConversationDetailView(conversationID: conversation.id)
+                        ConversationDetailView(conversationID: conversation.id, services: viewModel.services)
                     } label: {
                         ConversationRowView(item: conversation)
                     }

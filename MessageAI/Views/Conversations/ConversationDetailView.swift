@@ -2,25 +2,16 @@ import SwiftUI
 
 struct ConversationDetailView: View {
     let conversationID: String
+    let services: ServiceResolver
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Conversation detail coming soon")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            Text("Conversation ID: \(conversationID)")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Conversation")
+        ChatView(conversationID: conversationID, services: services)
     }
 }
 
 #Preview {
     NavigationStack {
-        ConversationDetailView(conversationID: "preview")
+        ConversationDetailView(conversationID: "preview", services: ServiceResolver.previewResolver)
     }
 }
 
