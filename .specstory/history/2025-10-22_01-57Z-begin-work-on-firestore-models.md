@@ -7129,3 +7129,275 @@ All conversation→chat flows compile and run; the view reacts to real-time upda
 
 ---
 
+_**User (2025-10-21 16:32Z)**_
+
+Now work on 6. **Message Input**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/ChatView.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Identifying Message Input component features**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/TASKS.md
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/MessageInputView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/MessageInputView.swift
++import SwiftUI
++
++struct MessageInputView: View {
++    @Binding var text: String
++    var isSending: Bool
++    var onSend: () -> Void
++    var onAttachment: (() -> Void)?
++
++    private let placeholder = "Message"
++
++    var body: some View {
++        VStack(spacing: 8) {
++            HStack(spacing: 12) {
++                if let onAttachment {
++                    Button(action: onAttachment) {
++                        Image(systemName: "paperclip")
++                            .font(.system(size: 18, weight: .medium))
++                    }
++                    .disabled(isSending)
++                }
++
++                GrowingTextView(text: $text, placeholder: placeholder)
++                    .frame(minHeight: 36)
++
++                Button(action: onSend) {
++                    Image(systemName: "paperplane.fill")
++                        .font(.system(size: 20, weight: .semibold))
++                        .rotationEffect(.degrees(45))
++                }
++                .disabled(isSendDisabled)
++                .opacity(isSendDisabled ? 0.4 : 1)
++            }
++
++            if isSending {
++                ProgressView()
++                    .progressViewStyle(.circular)
++                    .scaleEffect(0.8)
++                    .frame(maxWidth: .infinity, alignment: .trailing)
++                    .transition(.opacity)
++            }
++        }
++        .padding(.horizontal)
++        .padding(.top, 8)
++        .padding(.bottom, 10)
++        .background(Material.thin)
++    }
++
++    private var isSendDisabled: Bool {
++        isSending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
++    }
++}
++
++private struct GrowingTextView: View {
++    @Binding var text: String
++    let placeholder: String
++    @State private var textHeight: CGFloat = 0
++
++    var body: some View {
++        ZStack(alignment: .leading) {
++            if text.isEmpty {
++                Text(placeholder)
++                    .foregroundStyle(.secondary)
++                    .padding(.vertical, 8)
++                    .padding(.leading, 4)
++            }
++
++            TextEditor(text: $text)
++                .scrollContentBackground(.hidden)
++                .background(Color(.secondarySystemBackground))
++                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
++                .padding(.vertical, 4)
++                .overlay(
++                    RoundedRectangle(cornerRadius: 20)
++                        .stroke(Color(.tertiaryLabel), lineWidth: 0.5)
++                )
++                .frame(minHeight: 36, maxHeight: max(120, textHeight))
++                .onChange(of: text) { _, _ in
++                    withAnimation(.easeInOut(duration: 0.15)) {
++                        textHeight = min(160, text.size(using: .body).height + 24)
++                    }
++                }
++        }
++    }
++}
++
++private extension String {
++    func size(using font: UIFont) -> CGSize {
++        let attributes = [NSAttributedString.Key.font: font]
++        let attributedString = NSAttributedString(string: self, attributes: attributes)
++        let size = attributedString.boundingRect(
++            with: CGSize(width: UIScreen.main.bounds.width - 120, height: .greatestFiniteMagnitude),
++            options: [.usesLineFragmentOrigin, .usesFontLeading],
++            context: nil
++        ).size
++        return size
++    }
++}
++
++#Preview {
++    MessageInputView(
++        text: .constant("Hello world"),
++        isSending: false,
++        onSend: {},
++        onAttachment: {}
++    )
++}
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/ChatView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/ChatView.swift
+@@
+         VStack(spacing: 0) {
+             messagesList
+             Divider()
+-            inputBar
++            MessageInputView(
++                text: $viewModel.draftText,
++                isSending: viewModel.isSending,
++                onSend: send,
++                onAttachment: nil
++            )
+         }
+@@
+-    private var inputBar: some View {
+-        HStack(spacing: 12) {
+-            TextField("Message", text: $viewModel.draftText, axis: .vertical)
+-                .textFieldStyle(.roundedBorder)
+-                .lineLimit(1...6)
+-
+-            Button(action: send) {
+-                Image(systemName: "paperplane.fill")
+-                    .font(.system(size: 20, weight: .semibold))
+-            }
+-            .disabled(viewModel.isSending || viewModel.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+-        }
+-        .padding(.horizontal)
+-        .padding(.vertical, 10)
+-        .background(Material.thin)
+-    }
+-
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/MessageInputView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Chat/MessageInputView.swift
+@@
+ private struct GrowingTextView: View {
+     @Binding var text: String
+     let placeholder: String
+-    @State private var textHeight: CGFloat = 0
+-
+     var body: some View {
+         ZStack(alignment: .leading) {
+             if text.isEmpty {
+                 Text(placeholder)
+                     .foregroundStyle(.secondary)
+                     .padding(.vertical, 8)
+                     .padding(.leading, 4)
+             }
+ 
+             TextEditor(text: $text)
+                 .scrollContentBackground(.hidden)
+                 .background(Color(.secondarySystemBackground))
+                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+-                .padding(.vertical, 4)
++                .padding(.vertical, 8)
+                 .overlay(
+                     RoundedRectangle(cornerRadius: 20)
+                         .stroke(Color(.tertiaryLabel), lineWidth: 0.5)
+                 )
+-                .frame(minHeight: 36, maxHeight: max(120, textHeight))
+-                .onChange(of: text) { _, _ in
+-                    withAnimation(.easeInOut(duration: 0.15)) {
+-                        textHeight = min(160, text.size(using: .body).height + 24)
+-                    }
+-                }
++                .frame(minHeight: 36, maxHeight: 120)
+         }
+     }
+ }
+-
+-private extension String {
+-    func size(using font: UIFont) -> CGSize {
+-        let attributes = [NSAttributedString.Key.font: font]
+-        let attributedString = NSAttributedString(string: self, attributes: attributes)
+-        let size = attributedString.boundingRect(
+-            with: CGSize(width: UIScreen.main.bounds.width - 120, height: .greatestFiniteMagnitude),
+-            options: [.usesLineFragmentOrigin, .usesFontLeading],
+-            context: nil
+-        ).size
+-        return size
+-    }
+-}
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Design Firestore repositories for conversations and messages to support MessageService
+- [x] Implement MessageService with send logic, optimistic updates, status tracking, and retry handling
+- [x] Update LocalDataManager integration and add necessary models/utilities to support messaging workflow
+- [x] Implement Chat View with message list, input bar, and integration with message listener/service
+- [x] Refine chat input (clean SwiftUI TextEditor layout)
+
+---
+
+Message input experience is now in place.
+
+- Added a dedicated `MessageInputView` with an attachment hook, styled `TextEditor` (auto-expands up to 120pt), send button state, and inline progress indicator.
+- Integrated the reusable input into `ChatView`, wiring bindings to `ChatViewModel` (text, sending state, send action).
+- Enhanced `ChatViewModel` to expose `isSending` and `errorMessage`, clear errors on successful send, and scroll updates arrive via Combine publishers.
+
+In this directory: `MessageAI/MessageAI/Views/Chat/MessageInputView.swift`, `MessageAI/MessageAI/Views/Chat/ChatView.swift`, `MessageAI/MessageAI/ViewModels/ChatViewModel.swift`, `MessageAI/MessageAI/Services/Messaging/MessageListenerService.swift`.
+
+---
+

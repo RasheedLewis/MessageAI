@@ -12,7 +12,12 @@ struct ChatView: View {
         VStack(spacing: 0) {
             messagesList
             Divider()
-            inputBar
+            MessageInputView(
+                text: $viewModel.draftText,
+                isSending: viewModel.isSending,
+                onSend: send,
+                onAttachment: nil
+            )
         }
         .navigationTitle("Conversation")
         .navigationBarTitleDisplayMode(.inline)
@@ -49,23 +54,6 @@ struct ChatView: View {
                 }
             }
         }
-    }
-
-    private var inputBar: some View {
-        HStack(spacing: 12) {
-            TextField("Message", text: $viewModel.draftText, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...6)
-
-            Button(action: send) {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 20, weight: .semibold))
-            }
-            .disabled(viewModel.isSending || viewModel.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-        .background(Material.thin)
     }
 
     private func send() {
