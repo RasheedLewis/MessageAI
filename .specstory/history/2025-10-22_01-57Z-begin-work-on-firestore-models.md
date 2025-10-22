@@ -1397,3 +1397,817 @@ Next up: wire these models into repositories/services and run tests once the mes
 
 ---
 
+_**User (2025-10-21 16:32Z)**_
+
+Work on 2. **Message Service**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Checking for existing MessageService and repositories**</details></think>
+
+---
+
+Tool use: **list_dir**
+
+<details>
+            <summary>Listed directory undefined • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning new messaging services**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Authentication/AuthenticationService.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning MessageService and repositories**
+
+I’m outlining what’s needed for a MessageService that handles sending messages with optimistic updates, status tracking, and retries. Since there’s no conversation or message repository yet, I’ll create `ConversationRepository.swift` and `MessageRepository.swift` under Services/Database, aligning with Firestore and LocalDataManager integration. I’m also considering dependency injection and existing project patterns to maintain consistency.</details></think>
+
+---
+
+Could not find file '/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/App/Config.swift' in the workspace.
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning MessageService and Repositories**
+
+I’m outlining the work to build a MessageService with Firestore integration, including optimistic updates, status tracking, and retry logic. It looks like I first need to create ConversationRepository and MessageRepository classes to handle Firestore operations, coordinating with the existing LocalDataManager and using Combine for updates. I’m considering the best folder structure and verifying dependencies like Firestore and architecture guidelines before starting the coding.</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Design Firestore repositories for conversations and messages to support MessageService
+- [ ] Implement MessageService with send logic, optimistic updates, status tracking, and retry handling
+- [ ] Update LocalDataManager integration and add necessary models/utilities to support messaging workflow
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Design Firestore repositories for conversations and messages to support MessageService
+- [-] Implement MessageService with send logic, optimistic updates, status tracking, and retry handling
+- [ ] Update LocalDataManager integration and add necessary models/utilities to support messaging workflow
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/ConversationRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/ConversationRepository.swift
++import Combine
++import FirebaseFirestore
++import Foundation
++
++public protocol ConversationRepositoryProtocol {
++    func upsertConversation(_ conversation: Conversation) async throws
++    func updateLastMessage(
++        conversationID: String,
++        message: Message,
++        lastMessageTime: Date
++    ) async throws
++
++    func incrementUnreadCount(
++        conversationID: String,
++        userID: String,
++        by amount: Int
++    ) async throws
++
++    func resetUnreadCount(
++        conversationID: String,
++        userID: String
++    ) async throws
++
++    func conversationDocumentReference(_ conversationID: String) -> DocumentReference
++}
++
++public final class ConversationRepository: ConversationRepositoryProtocol {
++    private enum Field {
++        static let conversations = "conversations"
++        static let lastMessage = "lastMessage"
++        static let lastMessageTime = "lastMessageTime"
++        static let updatedAt = "updatedAt"
++        static let unreadCount = "unreadCount"
++    }
++
++    private let db: Firestore
++
++    public init(db: Firestore = Firestore.firestore()) {
++        self.db = db
++    }
++
++    public func upsertConversation(_ conversation: Conversation) async throws {
++        let reference = conversationDocumentReference(conversation.id)
++        var data = conversation.firestoreData()
++        data["updatedAt"] = Timestamp(date: conversation.updatedAt ?? Date())
++        try await reference.setData(data, merge: true)
++    }
++
++    public func updateLastMessage(
++        conversationID: String,
++        message: Message,
++        lastMessageTime: Date
++    ) async throws {
++        let reference = conversationDocumentReference(conversationID)
++        var lastMessageData = message.firestoreData()
++        lastMessageData["id"] = message.id
++
++        let updates: [String: Any] = [
++            Field.lastMessage: lastMessageData,
++            Field.lastMessageTime: Timestamp(date: lastMessageTime),
++            Field.updatedAt: Timestamp(date: Date())
++        ]
++
++        try await reference.setData(updates, merge: true)
++    }
++
++    public func incrementUnreadCount(
++        conversationID: String,
++        userID: String,
++        by amount: Int
++    ) async throws {
++        let reference = conversationDocumentReference(conversationID)
++        try await reference.updateData([
++            "unreadCount.\(userID)": FieldValue.increment(Int64(amount)),
++            Field.updatedAt: Timestamp(date: Date())
++        ])
++    }
++
++    public func resetUnreadCount(
++        conversationID: String,
++        userID: String
++    ) async throws {
++        let reference = conversationDocumentReference(conversationID)
++        try await reference.updateData([
++            "unreadCount.\(userID)": 0,
++            Field.updatedAt: Timestamp(date: Date())
++        ])
++    }
++
++    public func conversationDocumentReference(_ conversationID: String) -> DocumentReference {
++        db.collection(Field.conversations).document(conversationID)
++    }
++}
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking need to read file**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/ConversationRepository.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/MessageRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/MessageRepository.swift
++import FirebaseFirestore
++import Foundation
++
++public protocol MessageRepositoryProtocol {
++    func createMessage(_ message: Message) async throws
++    func updateMessageStatus(
++        conversationID: String,
++        messageID: String,
++        status: MessageStatus
++    ) async throws
++    func updateMessageReadBy(
++        conversationID: String,
++        messageID: String,
++        readBy: [String: Date]
++    ) async throws
++    func messageDocumentReference(
++        conversationID: String,
++        messageID: String
++    ) -> DocumentReference
++}
++
++public final class MessageRepository: MessageRepositoryProtocol {
++    private enum Field {
++        static let conversations = "conversations"
++        static let messages = "messages"
++        static let status = "status"
++        static let readBy = "readBy"
++        static let timestamp = "timestamp"
++    }
++
++    private let db: Firestore
++
++    public init(db: Firestore = Firestore.firestore()) {
++        self.db = db
++    }
++
++    public func createMessage(_ message: Message) async throws {
++        let reference = messageDocumentReference(
++            conversationID: message.conversationId,
++            messageID: message.id
++        )
++
++        var data = message.firestoreData()
++        data["createdAt"] = Timestamp(date: message.timestamp)
++        try await reference.setData(data)
++    }
++
++    public func updateMessageStatus(
++        conversationID: String,
++        messageID: String,
++        status: MessageStatus
++    ) async throws {
++        let reference = messageDocumentReference(conversationID: conversationID, messageID: messageID)
++        try await reference.updateData([
++            Field.status: status.rawValue
++        ])
++    }
++
++    public func updateMessageReadBy(
++        conversationID: String,
++        messageID: String,
++        readBy: [String: Date]
++    ) async throws {
++        let reference = messageDocumentReference(conversationID: conversationID, messageID: messageID)
++        let readByData = readBy.reduce(into: [String: Timestamp]()) { partialResult, entry in
++            partialResult[entry.key] = Timestamp(date: entry.value)
++        }
++
++        try await reference.updateData([
++            Field.readBy: readByData
++        ])
++    }
++
++    public func messageDocumentReference(
++        conversationID: String,
++        messageID: String
++    ) -> DocumentReference {
++        db.collection(Field.conversations)
++            .document(conversationID)
++            .collection(Field.messages)
++            .document(messageID)
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
++import Combine
++import FirebaseFirestore
++import Foundation
++
++public enum MessageServiceError: LocalizedError {
++    case missingCurrentUser
++    case conversationNotFound
++    case localDataFailure(Error)
++    case remoteFailure(Error)
++
++    public var errorDescription: String? {
++        switch self {
++        case .missingCurrentUser:
++            return "The current user could not be determined."
++        case .conversationNotFound:
++            return "Unable to locate the conversation reference."
++        case .localDataFailure(let error):
++            return "Failed to update local data: \(error.localizedDescription)"
++        case .remoteFailure(let error):
++            return "Failed to sync message to Firestore: \(error.localizedDescription)"
++        }
++    }
++}
++
++public protocol MessageServiceProtocol {
++    func sendTextMessage(
++        _ content: String,
++        conversationID: String,
++        currentUserID: String
++    ) async -> Result<Message, MessageServiceError>
++
++    func sendMediaMessage(
++        mediaURL: URL,
++        conversationID: String,
++        currentUserID: String,
++        placeholderText: String
++    ) async -> Result<Message, MessageServiceError>
++
++    func retryPendingMessage(
++        messageID: String,
++        conversationID: String,
++        currentUserID: String
++    ) async -> Result<Message, MessageServiceError>
++}
++
++public final class MessageService: MessageServiceProtocol {
++    private struct Dependencies {
++        let localDataManager: LocalDataManager
++        let conversationRepository: ConversationRepositoryProtocol
++        let messageRepository: MessageRepositoryProtocol
++        let idGenerator: () -> String
++        let clock: () -> Date
++    }
++
++    private let dependencies: Dependencies
++
++    public init(
++        localDataManager: LocalDataManager,
++        conversationRepository: ConversationRepositoryProtocol = ConversationRepository(),
++        messageRepository: MessageRepositoryProtocol = MessageRepository(),
++        idGenerator: @escaping () -> String = { UUID().uuidString },
++        clock: @escaping () -> Date = Date.init
++    ) {
++        dependencies = Dependencies(
++            localDataManager: localDataManager,
++            conversationRepository: conversationRepository,
++            messageRepository: messageRepository,
++            idGenerator: idGenerator,
++            clock: clock
++        )
++    }
++
++    // MARK: - Public API
++
++    public func sendTextMessage(
++        _ content: String,
++        conversationID: String,
++        currentUserID: String
++    ) async -> Result<Message, MessageServiceError> {
++        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmed.isEmpty else {
++            return .failure(.localDataFailure(NSError(domain: "MessageService", code: 0)))
++        }
++
++        let message = makeMessage(
++            conversationID: conversationID,
++            senderID: currentUserID,
++            content: trimmed
++        )
++
++        return await send(message: message, conversationID: conversationID)
++    }
++
++    public func sendMediaMessage(
++        mediaURL: URL,
++        conversationID: String,
++        currentUserID: String,
++        placeholderText: String = ""
++    ) async -> Result<Message, MessageServiceError> {
++        let message = makeMessage(
++            conversationID: conversationID,
++            senderID: currentUserID,
++            content: placeholderText,
++            mediaURL: mediaURL
++        )
++
++        return await send(message: message, conversationID: conversationID)
++    }
++
++    public func retryPendingMessage(
++        messageID: String,
++        conversationID: String,
++        currentUserID: String
++    ) async -> Result<Message, MessageServiceError> {
++        do {
++            let localMessage = try dependencies.localDataManager.message(withID: messageID)
++            let message = Message(
++                id: localMessage.id,
++                conversationId: localMessage.conversationID,
++                senderId: localMessage.senderID,
++                content: localMessage.content,
++                mediaURL: localMessage.mediaURL,
++                timestamp: localMessage.timestamp,
++                status: .sending
++            )
++
++            try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sending)
++            try dependencies.localDataManager.updateMessageSyncStatus(
++                messageID: message.id,
++                status: .pending,
++                direction: .upload,
++                syncedAt: nil
++            )
++
++            return await send(message: message, conversationID: conversationID, skipLocalInsert: true)
++        } catch {
++            return .failure(.localDataFailure(error))
++        }
++    }
++
++    // MARK: - Private Helpers
++
++    private func makeMessage(
++        conversationID: String,
++        senderID: String,
++        content: String,
++        mediaURL: URL? = nil
++    ) -> Message {
++        Message(
++            id: dependencies.idGenerator(),
++            conversationId: conversationID,
++            senderId: senderID,
++            content: content,
++            mediaURL: mediaURL,
++            timestamp: dependencies.clock(),
++            status: .sending
++        )
++    }
++
++    private func send(
++        message: Message,
++        conversationID: String,
++        skipLocalInsert: Bool = false
++    ) async -> Result<Message, MessageServiceError> {
++        do {
++            if !skipLocalInsert {
++                try insertLocalMessage(message)
++            }
++
++            do {
++                try await dependencies.messageRepository.createMessage(message)
++                try await dependencies.conversationRepository.updateLastMessage(
++                    conversationID: conversationID,
++                    message: message,
++                    lastMessageTime: message.timestamp
++                )
++
++                try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
++                try dependencies.localDataManager.updateMessageSyncStatus(
++                    messageID: message.id,
++                    status: .synced,
++                    direction: .upload,
++                    syncedAt: dependencies.clock()
++                )
++
++                return .success(message)
++            } catch {
++                try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
++                try dependencies.localDataManager.updateMessageSyncStatus(
++                    messageID: message.id,
++                    status: .failed,
++                    direction: .upload,
++                    syncedAt: dependencies.clock()
++                )
++
++                return .failure(.remoteFailure(error))
++            }
++        } catch {
++            return .failure(.localDataFailure(error))
++        }
++    }
++
++    private func insertLocalMessage(_ message: Message) throws {
++        let localMessage = LocalMessage(
++            id: message.id,
++            conversationID: message.conversationId,
++            senderID: message.senderId,
++            content: message.content,
++            mediaURL: message.mediaURL,
++            timestamp: message.timestamp,
++            status: .sending,
++            readBy: [:],
++            aiCategory: nil,
++            sentiment: nil,
++            priority: nil,
++            collaborationScore: nil,
++            metadata: [:],
++            syncStatus: .pending,
++            syncDirection: .upload,
++            syncAttemptCount: 0,
++            lastSyncedAt: nil
++        )
++
++        try dependencies.localDataManager.addMessage(localMessage, toConversationID: message.conversationId)
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
+@@
+-import Combine
+-import FirebaseFirestore
+ import Foundation
+@@
+-    case remoteFailure(Error)
++    case remoteFailure(Error)
++    case emptyMessage
+@@
+-        }
++        case .remoteFailure(let error):
++            return "Failed to sync message to Firestore: \(error.localizedDescription)"
++        case .emptyMessage:
++            return "Messages must contain at least one visible character or attachment."
++        }
+@@
+-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+-        guard !trimmed.isEmpty else {
+-            return .failure(.localDataFailure(NSError(domain: "MessageService", code: 0)))
++        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmed.isEmpty else {
++            return .failure(.emptyMessage)
+         }
+@@
+-                )
+-
+-                try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
+-                try dependencies.localDataManager.updateMessageSyncStatus(
++                )
++
++                try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
++                try dependencies.localDataManager.updateMessageSyncStatus(
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
+@@
+ import Foundation
+ 
+ public enum MessageServiceError: LocalizedError {
+     case missingCurrentUser
+     case conversationNotFound
+@@
+     func retryPendingMessage(
+         messageID: String,
+         conversationID: String,
+         currentUserID: String
+     ) async -> Result<Message, MessageServiceError>
+@@
+     private struct Dependencies {
+         let localDataManager: LocalDataManager
+         let conversationRepository: ConversationRepositoryProtocol
+         let messageRepository: MessageRepositoryProtocol
+         let idGenerator: () -> String
+@@
+         try dependencies.localDataManager.addMessage(localMessage, toConversationID: message.conversationId)
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
+@@
+-    private func send(
+-        message: Message,
+-        conversationID: String,
+-        skipLocalInsert: Bool = false
+-    ) async -> Result<Message, MessageServiceError> {
++    private func send(
++        message: Message,
++        conversationID: String,
++        skipLocalInsert: Bool = false
++    ) async -> Result<Message, MessageServiceError> {
+         do {
+             if !skipLocalInsert {
+                 try insertLocalMessage(message)
+             }
+ 
+             do {
+                 try await dependencies.messageRepository.createMessage(message)
+                 try await dependencies.conversationRepository.updateLastMessage(
+                     conversationID: conversationID,
+                     message: message,
+                     lastMessageTime: message.timestamp
+                 )
+-
+-                try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
+-                try dependencies.localDataManager.updateMessageSyncStatus(
+-                    messageID: message.id,
+-                    status: .synced,
+-                    direction: .upload,
+-                    syncedAt: dependencies.clock()
+-                )
+-
+-                return .success(message)
+-            } catch {
+-                try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
+-                try dependencies.localDataManager.updateMessageSyncStatus(
+-                    messageID: message.id,
+-                    status: .failed,
+-                    direction: .upload,
+-                    syncedAt: dependencies.clock()
+-                )
+-
+-                return .failure(.remoteFailure(error))
++                try await markMessageSynced(message)
++                return .success(message)
++            } catch {
++                try markMessageFailed(message)
++                return .failure(.remoteFailure(error))
+             }
+         } catch {
+             return .failure(.localDataFailure(error))
+         }
+     }
+ 
+-    private func insertLocalMessage(_ message: Message) throws {
++    private func insertLocalMessage(_ message: Message) throws {
+         let localMessage = LocalMessage(
+             id: message.id,
+             conversationID: message.conversationId,
+             senderID: message.senderId,
+             content: message.content,
+@@
+ 
+         try dependencies.localDataManager.addMessage(localMessage, toConversationID: message.conversationId)
+     }
++
++    private func markMessageSynced(_ message: Message) async throws {
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
++        try dependencies.localDataManager.updateMessageSyncStatus(
++            messageID: message.id,
++            status: .synced,
++            direction: .upload,
++            syncedAt: dependencies.clock()
++        )
++    }
++
++    private func markMessageFailed(_ message: Message) throws {
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
++        try dependencies.localDataManager.updateMessageSyncStatus(
++            messageID: message.id,
++            status: .failed,
++            direction: .upload,
++            syncedAt: dependencies.clock()
++        )
++    }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
+@@
+-        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
+         try dependencies.localDataManager.updateMessageSyncStatus(
+             messageID: message.id,
+             status: .synced,
+             direction: .upload,
+             syncedAt: dependencies.clock()
+@@
+-        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
+         try dependencies.localDataManager.updateMessageSyncStatus(
+             messageID: message.id,
+             status: .failed,
+             direction: .upload,
+             syncedAt: dependencies.clock()
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
+@@
+-        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
+         try dependencies.localDataManager.updateMessageSyncStatus(
+             messageID: message.id,
+             status: .synced,
+             direction: .upload,
+             syncedAt: dependencies.clock()
+@@
+-        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
+         try dependencies.localDataManager.updateMessageSyncStatus(
+             messageID: message.id,
+             status: .failed,
+             direction: .upload,
+             syncedAt: dependencies.clock()
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageService.swift
+@@
+-        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .sent)
+         try dependencies.localDataManager.updateMessageSyncStatus(
+             messageID: message.id,
+             status: .synced,
+             direction: .upload,
+             syncedAt: dependencies.clock()
+@@
+-        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
++        try dependencies.localDataManager.updateMessageStatus(messageID: message.id, status: .failed)
+         try dependencies.localDataManager.updateMessageSyncStatus(
+             messageID: message.id,
+             status: .failed,
+             direction: .upload,
+             syncedAt: dependencies.clock()
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Design Firestore repositories for conversations and messages to support MessageService
+- [x] Implement MessageService with send logic, optimistic updates, status tracking, and retry handling
+- [ ] Update LocalDataManager integration and add necessary models/utilities to support messaging workflow
+
+---
+
+Implemented the messaging data flow for PR 4’s second subtask.
+
+- Added Firestore repositories `ConversationRepository` and `MessageRepository` to handle conversation metadata and message CRUD, including unread counts and read receipts.
+- Built `MessageService` with text/media send APIs, local optimistic insert via `LocalDataManager`, remote sync, retry support, and unified status transitions.
+- Defined `MessageServiceError.emptyMessage` and refactored sync/failed handling for testability and reuse.
+
+Next: connect real-time listeners, tie into view models, and add tests when the messaging UI layer is ready.
+
+---
+
