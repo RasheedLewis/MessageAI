@@ -59,6 +59,8 @@ final class LocalDataManager {
             let conversation = createDefault()
             updates(conversation)
             conversation.lastSyncedAt = Date()
+            conversation.createdAt = conversation.createdAt ?? Date()
+            conversation.updatedAt = Date()
             updateConversationSummary(for: conversation)
             context.insert(conversation)
         }

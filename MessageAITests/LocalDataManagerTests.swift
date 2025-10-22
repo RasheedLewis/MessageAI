@@ -23,6 +23,7 @@ final class LocalDataManagerTests: XCTestCase {
             createDefault: LocalConversation(
                 id: conversationID,
                 title: "Chat",
+                avatarURL: nil,
                 type: .oneOnOne
             )
         ) { conversation in
@@ -41,6 +42,7 @@ final class LocalDataManagerTests: XCTestCase {
             createDefault: LocalConversation(
                 id: conversationID,
                 title: "Messages",
+                avatarURL: nil,
                 type: .oneOnOne
             )
         ) { _ in }
@@ -73,6 +75,7 @@ final class LocalDataManagerTests: XCTestCase {
             createDefault: LocalConversation(
                 id: conversationID,
                 title: "History",
+                avatarURL: nil,
                 type: .oneOnOne
             )
         ) { _ in }
@@ -116,6 +119,7 @@ final class LocalDataManagerTests: XCTestCase {
             createDefault: LocalConversation(
                 id: conversationID,
                 title: "Sync",
+                avatarURL: nil,
                 type: .oneOnOne
             )
         ) { _ in }
@@ -147,6 +151,7 @@ final class LocalDataManagerTests: XCTestCase {
             createDefault: LocalConversation(
                 id: conversationID,
                 title: "Delete",
+                avatarURL: nil,
                 type: .oneOnOne
             )
         ) { _ in }

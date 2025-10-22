@@ -439,7 +439,3666 @@ Tool use: **apply_patch**
 
 ---
 
-Updated the PR #6 section in `TASKS.md` to reflect the revised scope: added details on Firebase-backed user search
+Updated the PR #6 section in `TASKS.md` to reflect the revised scope: added details on Firebase-backed user search, group metadata persistence, UI adjustments, deferred notifications, and clarified testing goals. Let me know if anything else should change.
+
+---
+
+_**User (2025-10-22 15:43Z)**_
+
+Begin work on 1. **Group Creation**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Outlining group creation architecture and steps**
+
+I'm mapping out all parts needed to build group creation—from extending the service resolver with new repositories and services to crafting view models with search capabilities, creating Firestore queries to fetch users, handling UI for user selection and optional group avatar, and integrating everything with local data management and navigation flow. There's a lot to coordinate, so I'm planning it carefully before jumping into code.
+**Detailing conversation creation and view model design**
+
+I’m focusing on implementing conversation creation via upsert in the repository, updating local caching for conversations with group info, and designing the GroupCreationViewModel with published state for group name, selected users, search results, creation status, and optional photo. I’m also planning the SwiftUI view structure to support group details input, user search and selection, and photo picking with clean state management.
+**Designing GroupCreationView interactions and UI feedback**
+
+I’m shaping the SwiftUI view logic to manage toolbar actions, show progress and errors based on creation state, toggle user selections with checkmarks, handle user photo selection with data stored in the view model, and provide a smooth UX by disabling buttons as needed and displaying dynamic sections for selected participants and search results. I’m also planning to trigger initial user fetch on appear and cleanly integrate image conversions.</details></think>
+
+---
+
+Could not find file '/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Utilities/String+Extensions.swift' in the workspace.
+
+---
+
+Tool use: **list_dir**
+
+<details>
+            <summary>Listed directory undefined • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+Tool use: **list_dir**
+
+<details>
+            <summary>Listed directory undefined • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning group creation feature**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalUser.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Outlining group creation architecture**
+**Designing user search and view model components**
+
+I’m working out the user search logic with Firestore queries handling empty, email, and displayName cases, plus filtering and exclusions. I’m also drafting the `GroupCreationViewModel` with published states for search, selection, loading, and group creation, setting up async search calls with Combine debounce and proper cancellation. The create group flow includes validations, building conversation models, writing to Firestore and local data store, and error handling. I’m planning to support optional group photo selection later and integrate the view model with the UI. This feels like solid progress toward user search and group creation features!</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift
++import FirebaseFirestore
++import Foundation
++
++public protocol UserSearchServiceProtocol {
++    func searchUsers(
++        matching query: String,
++        excludingUserIDs: Set<String>,
++        limit: Int
++    ) async throws -> [User]
++}
++
++public enum UserSearchServiceError: LocalizedError {
++    case invalidResult
++
++    public var errorDescription: String? {
++        switch self {
++        case .invalidResult:
++            return "Unable to load users at this time."
++        }
++    }
++}
++
++public final class UserSearchService: UserSearchServiceProtocol {
++    private enum Collection: String {
++        case users
++    }
++
++    private let db: Firestore
++
++    public init(db: Firestore = Firestore.firestore()) {
++        self.db = db
++    }
++
++    public func searchUsers(
++        matching query: String,
++        excludingUserIDs: Set<String>,
++        limit: Int = 25
++    ) async throws -> [User] {
++        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
++        let collection = db.collection(Collection.users.rawValue)
++
++        var documents: [QueryDocumentSnapshot] = []
++
++        if trimmedQuery.isEmpty {
++            let query = collection
++                .order(by: "displayName")
++                .limit(to: limit)
++            let snapshot = try await query.getDocuments()
++            documents = snapshot.documents
++        } else if trimmedQuery.contains("@") {
++            // Exact email match first
++            let lowered = trimmedQuery.lowercased()
++            let emailQuery = collection
++                .whereField("email", isEqualTo: lowered)
++                .limit(to: limit)
++            let emailSnapshot = try await emailQuery.getDocuments()
++            documents = emailSnapshot.documents
++
++            // Fallback to display name query if nothing returned
++            if documents.isEmpty {
++                let nameSnapshot = try await collection
++                    .order(by: "displayName")
++                    .limit(to: 50)
++                    .getDocuments()
++                documents = nameSnapshot.documents
++            }
++        } else {
++            let snapshot = try await collection
++                .order(by: "displayName")
++                .limit(to: 50)
++                .getDocuments()
++            documents = snapshot.documents
++        }
++
++        var users = documents.compactMap { document in
++            User(documentID: document.documentID, data: document.data())
++        }
++
++        if !trimmedQuery.isEmpty {
++            users = users.filter { user in
++                user.displayName.localizedCaseInsensitiveContains(trimmedQuery) ||
++                (user.email?.localizedCaseInsensitiveContains(trimmedQuery) ?? false)
++            }
++        }
++
++        if !excludingUserIDs.isEmpty {
++            users.removeAll { excludingUserIDs.contains($0.id) }
++        }
++
++        if users.count > limit {
++            users = Array(users.prefix(limit))
++        }
++
++        return users
++    }
++}
++
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Drafting group creation components and services**
+
+There is a lot here about creating the group creation flow—view, viewmodel, search, group name & photo options, Firestore doc creation, and local persistence. I’m thinking through integrating new services like GroupCreationService, updating ServiceResolver to add dependencies, and managing Firestore conversations with unique IDs. I’ll need to balance implementing optional photo picking now with deferring actual uploads, plus ensure smooth local and remote data syncing. It’s a big chunk, so I want to plan these steps carefully before coding.</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Storage/ProfilePhotoService.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning group creation implementation**
+
+I’m mapping out the needed components: two Swift files for view and view model, integrating the existing UserSearchService, and adding conversation creation support in Firestore and local storage. I’ll need to explore ConversationRepository and services to add creation methods and ensure local updates sync with real-time listeners. This might involve extending repositories or creating a new service for group conversations. Let’s see what frameworks are already in place.</details></think>
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "createConversation" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 0 matches</summary>
+
+Output mode: content
+
+
+_No matches found_
+
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning group creation feature**
+
+This is a big setup for adding group creation: I'll add new views, viewmodels, and services, extend the conversation model to handle avatars, integrate user search, implement conversation creation in Firestore, and wire navigation to open new groups. It’ll take careful coordination of repository updates, service resolver changes, and UI work with SwiftUI’s Combine-based search throttling and photo picker integration. Let’s unpack this step by step!</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationRowView.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Designing group creation feature**
+
+I’m outlining a detailed plan to build the group creation flow, including new UI, view model, and services. This involves extending conversation models with avatar support, creating a photo upload service, integrating user search, and updating the service resolver and relevant views to orchestrate these parts smoothly. I want to ensure the conversation creation logic covers both remote Firestore and local persistence, allowing a responsive user experience with group naming and optional photos. Let’s break down implementation into clear steps, balancing functionality and maintainability!
+**Outlining implementation steps for group creation**
+
+I’m laying out detailed action items for building the group creation feature, including new services, view model, views, UI integration with photo selection, and updates to models and service resolver. This plan ensures smooth flow from searching users to creating groups with optional avatars, while handling asynchronous tasks and UI state properly. It’s a thorough roadmap to implement and integrate all pieces step-by-step.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/Conversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/Conversation.swift
+@@
+-    public var lastMessage: Message?
++    public var avatarURL: URL?
++    public var lastMessage: Message?
+@@
+         title: String? = nil,
++        avatarURL: URL? = nil,
+         lastMessage: Message? = nil,
+@@
+         self.title = title
++        self.avatarURL = avatarURL
+         self.lastMessage = lastMessage
+@@
+-        case lastMessage
++        case avatarURL
++        case lastMessage
+@@
+-        let title = data["title"] as? String
++        let title = data["title"] as? String
++
++        let avatarURL: URL?
++        if let avatarURLString = data["avatarURL"] as? String {
++            avatarURL = URL(string: avatarURLString)
++        } else {
++            avatarURL = nil
++        }
+@@
+         self.init(
+             id: documentID,
+             participants: participantIDs,
+             type: type,
+-            title: title,
++            title: title,
++            avatarURL: avatarURL,
+             lastMessage: lastMessage,
+@@
+-        if let lastMessage {
++        if let avatarURL {
++            data["avatarURL"] = avatarURL.absoluteString
++        }
++
++        if let lastMessage {
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift
+@@
+     var title: String
++    var avatarURL: URL?
+     var type: LocalConversationType
+@@
+-        type: LocalConversationType,
++        type: LocalConversationType,
+         participantIDs: [String] = [],
+         lastMessageTimestamp: Date? = nil,
+         lastMessagePreview: String? = nil,
+         unreadCounts: [String: Int] = [:],
+         aiCategory: LocalMessageCategory? = nil,
+         lastSyncedAt: Date? = nil,
+         pendingUploadCount: Int = 0,
+         pendingDownloadCount: Int = 0
+     ) {
+         self.id = id
+         self.title = title
++        self.avatarURL = nil
+         self.type = type
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing group creation features**
+
+I'm mapping out all the pieces for group creation—adding avatar URL handling to LocalConversation and its initializer, updating services like MessageListenerService and LocalDataManager, integrating UserSearchService, and planning new views and view models. There’s a lot to coordinate here, especially managing conversation creation with new IDs and syncing data both remotely and locally. I’ll start by updating LocalConversation to properly accept and store the avatar URL.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift
+@@
+     var title: String
+     var avatarURL: URL?
+     var type: LocalConversationType
+@@
+-        title: String,
+-        type: LocalConversationType,
++        title: String,
++        avatarURL: URL? = nil,
++        type: LocalConversationType,
+         participantIDs: [String] = [],
+         lastMessageTimestamp: Date? = nil,
+         lastMessagePreview: String? = nil,
+         unreadCounts: [String: Int] = [:],
+         aiCategory: LocalMessageCategory? = nil,
+@@
+         pendingDownloadCount: Int = 0
+     ) {
+         self.id = id
+         self.title = title
+-        self.avatarURL = nil
++        self.avatarURL = avatarURL
+         self.type = type
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+@@
+     private func updateConversationSummary(for conversation: LocalConversation) {
+         let messages = (try? fetchMessages(forConversationID: conversation.id)) ?? []
+ 
+         if let latestMessage = messages.last {
+             conversation.lastMessageTimestamp = latestMessage.timestamp
+             if !latestMessage.content.isEmpty {
+                 conversation.lastMessagePreview = latestMessage.content
+             } else if latestMessage.mediaURL != nil {
+                 conversation.lastMessagePreview = "Attachment"
+-            } else {
++            } else {
+                 conversation.lastMessagePreview = nil
+             }
+         } else {
+             conversation.lastMessageTimestamp = nil
+             conversation.lastMessagePreview = nil
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Outlining group creation architecture and implementation**
+
+I’m mapping out a detailed plan to build group creation, including new views, viewmodels, and services. I’m considering updates to ServiceResolver for dependency injection, implementing user search with Firestore, managing optional group photos with Firebase Storage, creating a dedicated GroupConversationService to handle conversation creation and local data updates, and integrating the new group flow into ConversationListView and navigation. This plan balances modularity, testability, and user experience for smooth group chat setup.
+**Designing group conversation and avatar services with viewmodel integration**
+
+I’m detailing the implementation of the GroupConversationService with async creation logic, including avatar upload and local data updates. I’m planning the GroupAvatarService to handle Firebase Storage uploads. For the GroupCreationViewModel, I’m shaping user search, image handling, and group creation flow, mindful of async tasks, debouncing, and state management. Finally, I’m lining up integration points with ServiceResolver, MessageAIApp, and UI views to bring the group creation feature together smoothly.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Storage/GroupAvatarService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Storage/GroupAvatarService.swift
++import FirebaseStorage
++import Foundation
++
++public protocol GroupAvatarUploading {
++    func uploadGroupAvatar(data: Data, conversationID: String) async throws -> URL
++}
++
++public final class GroupAvatarService: GroupAvatarUploading {
++    private let storage: Storage
++
++    public init(storage: Storage = Storage.storage()) {
++        self.storage = storage
++    }
++
++    public func uploadGroupAvatar(data: Data, conversationID: String) async throws -> URL {
++        let reference = storage.reference(withPath: path(for: conversationID))
++        let metadata = StorageMetadata()
++        metadata.contentType = "image/jpeg"
++
++        _ = try await reference.putDataAsync(data, metadata: metadata)
++        return try await reference.downloadURL()
++    }
++
++    private func path(for conversationID: String) -> String {
++        "group_avatars/\(conversationID)/thumbnail.jpg"
++    }
++}
++
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/ServiceResolver.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning group creation feature**
+**Designing group creation view and view model**
+
+I’m sketching out how the GroupCreationViewModel manages search, selection, avatar handling, and group creation logic with asynchronous calls. The view will use PhotosPicker to pick avatars, show search results with selectable users, and include a create button that’s enabled only when valid. I plan to integrate user search, conversation repository, and avatar uploading smoothly while handling local data updates and UI state transitions.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/ServiceResolver.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/ServiceResolver.swift
+@@
+-final class ServiceResolver: ObservableObject {
+-    @Published var localDataManager: LocalDataManager
+-    @Published var messageListenerService: MessageListenerServiceProtocol
+-    @Published var messageService: MessageServiceProtocol
+-    @Published var currentUserID: String
+-
+-    init(
+-        localDataManager: LocalDataManager,
+-        listenerService: MessageListenerServiceProtocol,
+-        messageService: MessageServiceProtocol,
+-        currentUserID: String
+-    ) {
+-        self.localDataManager = localDataManager
+-        self.messageListenerService = listenerService
+-        self.messageService = messageService
+-        self.currentUserID = currentUserID
+-    }
+-
+-    static var previewResolver: ServiceResolver {
+-        let localDataManager = try? LocalDataManager(inMemory: true)
+-        let resolvedManager = localDataManager ?? (try? LocalDataManager(inMemory: true))
+-        let listener = resolvedManager.map { MessageListenerService(localDataManager: $0) }
+-        let messageService = resolvedManager.map {
+-            MessageService(
+-                localDataManager: $0,
+-                conversationRepository: ConversationRepository(),
+-                messageRepository: MessageRepository()
+-            )
+-        }
+-
+-        return ServiceResolver(
+-            localDataManager: resolvedManager ?? (try! LocalDataManager(inMemory: true)),
+-            listenerService: listener ?? MessageListenerService(localDataManager: try! LocalDataManager(inMemory: true)),
+-            messageService: messageService ?? MessageService(
+-                localDataManager: try! LocalDataManager(inMemory: true),
+-                conversationRepository: ConversationRepository(),
+-                messageRepository: MessageRepository()
+-            ),
+-            currentUserID: "demo"
+-        )
+-    }
+-}
++final class ServiceResolver: ObservableObject {
++    @Published var localDataManager: LocalDataManager
++    @Published var messageListenerService: MessageListenerServiceProtocol
++    @Published var messageService: MessageServiceProtocol
++    @Published var conversationRepository: ConversationRepositoryProtocol
++    @Published var messageRepository: MessageRepositoryProtocol
++    @Published var userSearchService: UserSearchServiceProtocol
++    @Published var groupAvatarService: GroupAvatarUploading
++    @Published var currentUserID: String
++
++    init(
++        localDataManager: LocalDataManager,
++        listenerService: MessageListenerServiceProtocol,
++        messageService: MessageServiceProtocol,
++        conversationRepository: ConversationRepositoryProtocol,
++        messageRepository: MessageRepositoryProtocol,
++        userSearchService: UserSearchServiceProtocol,
++        groupAvatarService: GroupAvatarUploading,
++        currentUserID: String
++    ) {
++        self.localDataManager = localDataManager
++        self.messageListenerService = listenerService
++        self.messageService = messageService
++        self.conversationRepository = conversationRepository
++        self.messageRepository = messageRepository
++        self.userSearchService = userSearchService
++        self.groupAvatarService = groupAvatarService
++        self.currentUserID = currentUserID
++    }
++
++    static var previewResolver: ServiceResolver {
++        let localDataManager = (try? LocalDataManager(inMemory: true)) ?? (try! LocalDataManager(inMemory: true))
++        let conversationRepository = ConversationRepository()
++        let messageRepository = MessageRepository()
++        let listener = MessageListenerService(localDataManager: localDataManager)
++        let messageService = MessageService(
++            localDataManager: localDataManager,
++            conversationRepository: conversationRepository,
++            messageRepository: messageRepository
++        )
++
++        return ServiceResolver(
++            localDataManager: localDataManager,
++            listenerService: listener,
++            messageService: messageService,
++            conversationRepository: conversationRepository,
++            messageRepository: messageRepository,
++            userSearchService: UserSearchService(),
++            groupAvatarService: GroupAvatarService(),
++            currentUserID: "demo"
++        )
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/App/MessageAIApp.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/App/MessageAIApp.swift
+@@
+-        let listener = MessageListenerService(localDataManager: localDataManager)
+-        let messageService = MessageService(
+-            localDataManager: localDataManager,
+-            conversationRepository: ConversationRepository(),
+-            messageRepository: MessageRepository()
+-        )
+-        let currentUserID = AuthenticationService.shared.currentUser?.uid ?? "demo"
++        let conversationRepository = ConversationRepository()
++        let messageRepository = MessageRepository()
++        let listener = MessageListenerService(localDataManager: localDataManager)
++        let messageService = MessageService(
++            localDataManager: localDataManager,
++            conversationRepository: conversationRepository,
++            messageRepository: messageRepository
++        )
++        let currentUserID = AuthenticationService.shared.currentUser?.uid ?? "demo"
+         _services = StateObject(wrappedValue: ServiceResolver(
+             localDataManager: localDataManager,
+             listenerService: listener,
+-            messageService: messageService,
++            messageService: messageService,
++            conversationRepository: conversationRepository,
++            messageRepository: messageRepository,
++            userSearchService: UserSearchService(),
++            groupAvatarService: GroupAvatarService(),
+             currentUserID: currentUserID
+         ))
+*** End Patch
+```
+
+---
+
+Tool use: **list_dir**
+
+<details>
+            <summary>Listed directory undefined • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
++import Combine
++import Foundation
++import SwiftUI
++
++@MainActor
++final class GroupCreationViewModel: ObservableObject {
++    struct SearchResult: Identifiable, Equatable {
++        let id: String
++        let displayName: String
++        let email: String?
++        let photoURL: URL?
++    }
++
++    @Published var searchQuery: String = "" {
++        didSet { searchTask?.cancel(); scheduleSearch() }
++    }
++    @Published private(set) var searchResults: [SearchResult] = []
++    @Published private(set) var isSearching: Bool = false
++    @Published private(set) var errorMessage: String?
++    @Published var selectedUserIDs: Set<String> = []
++    @Published var groupName: String = ""
++    @Published var groupAvatarImage: UIImage?
++    @Published private(set) var isSaving: Bool = false
++
++    private let services: ServiceResolver
++    private var searchTask: Task<Void, Never>?
++    private var cancellables: Set<AnyCancellable> = []
++
++    init(services: ServiceResolver) {
++        self.services = services
++    }
++
++    func toggleSelection(for userID: String) {
++        if selectedUserIDs.contains(userID) {
++            selectedUserIDs.remove(userID)
++        } else {
++            selectedUserIDs.insert(userID)
++        }
++    }
++
++    func isSelected(userID: String) -> Bool {
++        selectedUserIDs.contains(userID)
++    }
++
++    func searchUsersImmediately() {
++        searchTask?.cancel()
++        executeSearch()
++    }
++
++    func createGroupConversation() async {
++        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmedName.isEmpty else {
++            errorMessage = "Group needs a name."
++            return
++        }
++
++        guard selectedUserIDs.count >= 2 else {
++            errorMessage = "Select at least two participants."
++            return
++        }
++
++        isSaving = true
++        errorMessage = nil
++
++        do {
++            let conversationID = UUID().uuidString
++            var avatarURL: URL?
++
++            if let image = groupAvatarImage,
++               let data = image.jpegData(compressionQuality: 0.7) {
++                avatarURL = try await services.groupAvatarService.uploadGroupAvatar(
++                    data: data,
++                    conversationID: conversationID
++                )
++            }
++
++            var participants = Array(selectedUserIDs)
++            participants.append(services.currentUserID)
++
++            let conversation = Conversation(
++                id: conversationID,
++                participants: participants,
++                type: .group,
++                title: trimmedName,
++                avatarURL: avatarURL,
++                lastMessage: nil,
++                lastMessageTime: nil,
++                unreadCount: [:],
++                aiCategory: nil,
++                createdAt: Date(),
++                updatedAt: Date()
++            )
++
++            try await services.conversationRepository.upsertConversation(conversation)
++            try services.localDataManager.upsertConversation(
++                LocalConversation(
++                    id: conversation.id,
++                    title: trimmedName,
++                    avatarURL: avatarURL,
++                    type: .group,
++                    participantIDs: participants,
++                    lastMessageTimestamp: nil,
++                    lastMessagePreview: nil,
++                    unreadCounts: [:],
++                    aiCategory: nil,
++                    lastSyncedAt: Date()
++                )
++            )
++
++            resetState()
++        } catch {
++            errorMessage = error.localizedDescription
++        }
++
++        isSaving = false
++    }
++
++    func resetState() {
++        groupName = ""
++        groupAvatarImage = nil
++        selectedUserIDs.removeAll()
++        searchResults = []
++        searchQuery = ""
++    }
++
++    private func scheduleSearch() {
++        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
++            searchResults = []
++            return
++        }
++
++        searchTask = Task { [weak self] in
++            try? await Task.sleep(for: .milliseconds(300))
++            guard !Task.isCancelled else { return }
++            await self?.executeSearch()
++        }
++    }
++
++    private func executeSearch() async {
++        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !query.isEmpty else {
++            await MainActor.run { [weak self] in
++                self?.searchResults = []
++            }
++            return
++        }
++
++        isSearching = true
++        do {
++            let excluding = selectedUserIDs.union([services.currentUserID])
++            let users = try await services.userSearchService.searchUsers(
++                matching: query,
++                excludingUserIDs: excluding,
++                limit: 25
++            )
++
++            await MainActor.run { [weak self] in
++                self?.searchResults = users.map { user in
++                    SearchResult(
++                        id: user.id,
++                        displayName: user.displayName,
++                        email: user.email,
++                        photoURL: user.photoURL
++                    )
++                }
++            }
++        } catch {
++            await MainActor.run { [weak self] in
++                self?.errorMessage = error.localizedDescription
++            }
++        }
++
++        isSearching = false
++    }
++}
++
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating conversation and group creation features**
+
+I'm mapping out updates to conversation handling—adding avatar support across models and services to keep everything compiling smoothly. I’m also planning the new GroupCreationView with search, multi-selection, optional avatar using PhotosPicker, and async group creation that reports back the new conversation ID for UI updates. This will involve view models, UI state, and lifecycle hooks to handle creation flow and dismissal properly.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+@@
+-    func createGroupConversation() async {
++    @discardableResult
++    func createGroupConversation() async -> String? {
+         let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !trimmedName.isEmpty else {
+             errorMessage = "Group needs a name."
+-            return
++            return nil
+         }
+ 
+         guard selectedUserIDs.count >= 2 else {
+             errorMessage = "Select at least two participants."
+-            return
++            return nil
+         }
+ 
+         isSaving = true
+         errorMessage = nil
+@@
+             try await services.conversationRepository.upsertConversation(conversation)
+             try services.localDataManager.upsertConversation(
+                 LocalConversation(
+                     id: conversation.id,
+                     title: trimmedName,
+                     avatarURL: avatarURL,
+                     type: .group,
+                     participantIDs: participants,
+                     lastMessageTimestamp: nil,
+                     lastMessagePreview: nil,
+                     unreadCounts: [:],
+                     aiCategory: nil,
+                     lastSyncedAt: Date()
+                 )
+             )
+ 
+             resetState()
+-        } catch {
++            isSaving = false
++            return conversation.id
++        } catch {
+             errorMessage = error.localizedDescription
+         }
+ 
+         isSaving = false
++        return nil
+*** End Patch
+```
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "Todo" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 0 matches</summary>
+
+Output mode: content
+
+
+_No matches found_
+
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift
+@@
+-import FirebaseFirestore
+-import Foundation
+-
+-public protocol UserSearchServiceProtocol {
+-    func searchUsers(
+-        matching query: String,
+-        excludingUserIDs: Set<String>,
+-        limit: Int
+-    ) async throws -> [User]
+-}
+-
+-public enum UserSearchServiceError: LocalizedError {
+-    case invalidResult
+-
+-    public var errorDescription: String? {
+-        switch self {
+-        case .invalidResult:
+-            return "Unable to load users at this time."
+-        }
+-    }
+-}
+-
+-public final class UserSearchService: UserSearchServiceProtocol {
+-    private enum Collection: String {
+-        case users
+-    }
+-
+-    private let db: Firestore
+-
+-    public init(db: Firestore = Firestore.firestore()) {
+-        self.db = db
+-    }
+-
+-    public func searchUsers(
+-        matching query: String,
+-        excludingUserIDs: Set<String>,
+-        limit: Int = 25
+-    ) async throws -> [User] {
+-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+-        let collection = db.collection(Collection.users.rawValue)
+-
+-        var documents: [QueryDocumentSnapshot] = []
+-
+-        if trimmedQuery.isEmpty {
+-            let query = collection
+-                .order(by: "displayName")
+-                .limit(to: limit)
+-            let snapshot = try await query.getDocuments()
+-            documents = snapshot.documents
+-        } else if trimmedQuery.contains("@") {
+-            // Exact email match first
+-            let lowered = trimmedQuery.lowercased()
+-            let emailQuery = collection
+-                .whereField("email", isEqualTo: lowered)
+-                .limit(to: limit)
+-            let emailSnapshot = try await emailQuery.getDocuments()
+-            documents = emailSnapshot.documents
+-
+-            // Fallback to display name query if nothing returned
+-            if documents.isEmpty {
+-                let nameSnapshot = try await collection
+-                    .order(by: "displayName")
+-                    .limit(to: 50)
+-                    .getDocuments()
+-                documents = nameSnapshot.documents
+-            }
+-        } else {
+-            let snapshot = try await collection
+-                .order(by: "displayName")
+-                .limit(to: 50)
+-                .getDocuments()
+-            documents = snapshot.documents
+-        }
+-
+-        var users = documents.compactMap { document in
+-            User(documentID: document.documentID, data: document.data())
+-        }
+-
+-        if !trimmedQuery.isEmpty {
+-            users = users.filter { user in
+-                user.displayName.localizedCaseInsensitiveContains(trimmedQuery) ||
+-                (user.email?.localizedCaseInsensitiveContains(trimmedQuery) ?? false)
+-            }
+-        }
+-
+-        if !excludingUserIDs.isEmpty {
+-            users.removeAll { excludingUserIDs.contains($0.id) }
+-        }
+-
+-        if users.count > limit {
+-            users = Array(users.prefix(limit))
+-        }
+-
+-        return users
+-    }
+-}
++import FirebaseFirestore
++import Foundation
++
++public protocol UserSearchServiceProtocol {
++    func searchUsers(
++        matching query: String,
++        excludingUserIDs: Set<String>,
++        limit: Int
++    ) async throws -> [User]
++}
++
++public final class UserSearchService: UserSearchServiceProtocol {
++    private enum Collection: String {
++        case users
++    }
++
++    private let db: Firestore
++
++    public init(db: Firestore = Firestore.firestore()) {
++        self.db = db
++    }
++
++    public func searchUsers(
++        matching query: String,
++        excludingUserIDs: Set<String>,
++        limit: Int = 25
++    ) async throws -> [User] {
++        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmedQuery.isEmpty else { return [] }
++
++        let collection = db.collection(Collection.users.rawValue)
++        let lowercaseQuery = trimmedQuery.lowercased()
++
++        // Prioritize exact email matches when an email-like query is entered.
++        var documents: [QueryDocumentSnapshot] = []
++        if trimmedQuery.contains("@") {
++            let exactEmailSnapshot = try await collection
++                .whereField("email", isEqualTo: lowercaseQuery)
++                .limit(to: limit)
++                .getDocuments()
++            documents = exactEmailSnapshot.documents
++        }
++
++        if documents.isEmpty {
++            // Fallback to prefix search on display name using range query
++            let endRange = lowercaseQuery + "\u{f8ff}"
++            let displayNameQuery = collection
++                .order(by: "displayName_lowercase")
++                .start(at: [lowercaseQuery])
++                .end(at: [endRange])
++                .limit(to: limit)
++
++            let snapshot = try await displayNameQuery.getDocuments()
++            documents = snapshot.documents
++        }
++
++        var users = documents.compactMap { document in
++            User(documentID: document.documentID, data: document.data())
++        }
++
++        // Fallback filtering for partial email matches if no display name index accessible
++        if documents.isEmpty {
++            let allSnapshot = try await collection
++                .order(by: "displayName")
++                .limit(to: limit * 2)
++                .getDocuments()
++            users = allSnapshot.documents.compactMap { User(documentID: $0.documentID, data: $0.data()) }
++                .filter { user in
++                    user.displayName.lowercased().contains(lowercaseQuery) ||
++                    (user.email?.lowercased().contains(lowercaseQuery) ?? false)
++                }
++        }
++
++        if !excludingUserIDs.isEmpty {
++            users.removeAll { excludingUserIDs.contains($0.id) }
++        }
++
++        if users.count > limit {
++            users = Array(users.prefix(limit))
++        }
++
++        return users
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/User.swift
+@@
+ public struct User: Identifiable, Codable, Equatable {
+     public var id: String
+     public var displayName: String
++    public var displayNameLowercase: String
+     public var email: String?
+     public var photoURL: URL?
+     public var isOnline: Bool
+@@
+         id: String,
+         displayName: String,
++        displayNameLowercase: String? = nil,
+         email: String? = nil,
+         photoURL: URL? = nil,
+         isOnline: Bool = false,
+         lastSeen: Date? = nil,
+         creatorProfile: CreatorProfile? = nil
+     ) {
+         self.id = id
+         self.displayName = displayName
++        self.displayNameLowercase = displayNameLowercase ?? displayName.lowercased()
+         self.email = email
+         self.photoURL = photoURL
+         self.isOnline = isOnline
+         self.lastSeen = lastSeen
+         self.creatorProfile = creatorProfile
+@@
+         case id
+         case displayName
++        case displayNameLowercase
+         case email
+         case photoURL
+         case isOnline
+@@
+-        let email = data["email"] as? String
++        let email = data["email"] as? String
+         let photoURL: URL?
+         if let photoURLString = data["photoURL"] as? String {
+             photoURL = URL(string: photoURLString)
+         } else {
+             photoURL = nil
+         }
+ 
+         let isOnline = data["isOnline"] as? Bool ?? false
+         let lastSeen: Date?
+@@
+-        self.init(
+-            id: documentID,
+-            displayName: displayName,
+-            email: email,
+-            photoURL: photoURL,
+-            isOnline: isOnline,
+-            lastSeen: lastSeen,
+-            creatorProfile: creatorProfile
+-        )
++        let displayNameLowercase = data["displayName_lowercase"] as? String ?? displayName.lowercased()
++
++        self.init(
++            id: documentID,
++            displayName: displayName,
++            displayNameLowercase: displayNameLowercase,
++            email: email,
++            photoURL: photoURL,
++            isOnline: isOnline,
++            lastSeen: lastSeen,
++            creatorProfile: creatorProfile
++        )
+     }
+ 
+     public func firestoreData() -> [String: Any] {
+         var data: [String: Any] = [
+-            "displayName": displayName,
++            "displayName": displayName,
++            "displayName_lowercase": displayNameLowercase,
+             "isOnline": isOnline
+         ]
+ 
+         data["email"] = email
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+@@
+     public func createOrUpdateUser(_ user: User) async throws {
+         let data = user.firestoreData()
+         try await usersCollection
+             .document(user.id)
+             .setData(data, merge: true)
++        try await usersCollection
++            .document(user.id)
++            .setData([
++                "displayName_lowercase": user.displayNameLowercase
++            ], merge: true)
+     }
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing Group Creation UI and ViewModel**
+
+I’m focusing on building the GroupCreationView with its view model, handling user search, multi-selection, group naming, optional avatar picking via PhotosPicker, and integrating it smoothly into ConversationListView for creating and navigating to new group chats. There’s a lot to handle: managing selected participants, syncing UI state, updating local data, and ensuring a clean user flow with dismissal and navigation on group creation success. I’ll also adjust related services and data managers to support avatar URLs and participant data consistently.
+**Enhancing GroupCreationView and Its ViewModel Integration**
+
+I’m working on adding toolbar buttons for cancel and create, enabling create only when enough participants are selected, and handling async group creation with proper dismissal and navigation. I’m updating ConversationListView to present the new GroupCreationView as a sheet and programmatically navigate to the created conversation. The GroupCreationViewModel sees significant changes to manage selected participants as a collection of SearchResult objects, toggling selections, and providing computed properties for enabling creation. Search results now visually mark selections instead of filtering them out, keeping UI consistent. This will help deliver a smooth group creation flow with real-time participant management and proper navigation after creation.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+@@
+-import Combine
+-import Foundation
+-import SwiftUI
++import Combine
++import Foundation
++import SwiftUI
++import UIKit
+@@
+-    @Published private(set) var searchResults: [SearchResult] = []
+-    @Published private(set) var isSearching: Bool = false
+-    @Published private(set) var errorMessage: String?
+-    @Published var selectedUserIDs: Set<String> = []
++    @Published private(set) var searchResults: [SearchResult] = []
++    @Published private(set) var isSearching: Bool = false
++    @Published private(set) var errorMessage: String?
++    @Published private(set) var selectedParticipants: [SearchResult] = []
+     @Published var groupName: String = ""
+     @Published var groupAvatarImage: UIImage?
+     @Published private(set) var isSaving: Bool = false
+ 
+     private let services: ServiceResolver
+     private var searchTask: Task<Void, Never>?
+     private var cancellables: Set<AnyCancellable> = []
++    private var selectedParticipantIDs: Set<String> = []
+@@
+-    func toggleSelection(for userID: String) {
+-        if selectedUserIDs.contains(userID) {
+-            selectedUserIDs.remove(userID)
+-        } else {
+-            selectedUserIDs.insert(userID)
+-        }
++    func toggleSelection(_ result: SearchResult) {
++        if selectedParticipantIDs.contains(result.id) {
++            selectedParticipantIDs.remove(result.id)
++            selectedParticipants.removeAll { $0.id == result.id }
++        } else {
++            selectedParticipantIDs.insert(result.id)
++            selectedParticipants.append(result)
++        }
+     }
+ 
+-    func isSelected(userID: String) -> Bool {
+-        selectedUserIDs.contains(userID)
++    func isSelected(_ result: SearchResult) -> Bool {
++        selectedParticipantIDs.contains(result.id)
++    }
++
++    func removeParticipant(withID id: String) {
++        guard selectedParticipantIDs.contains(id) else { return }
++        selectedParticipantIDs.remove(id)
++        selectedParticipants.removeAll { $0.id == id }
+     }
+ 
+     func searchUsersImmediately() {
+         searchTask?.cancel()
+         executeSearch()
+     }
+ 
+     @discardableResult
+     func createGroupConversation() async -> String? {
+         let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !trimmedName.isEmpty else {
+             errorMessage = "Group needs a name."
+             return nil
+         }
+ 
+-        guard selectedUserIDs.count >= 2 else {
++        guard selectedParticipants.count >= 2 else {
+             errorMessage = "Select at least two participants."
+             return nil
+         }
+ 
+         isSaving = true
+@@
+-            var participants = Array(selectedUserIDs)
+-            participants.append(services.currentUserID)
++            var participants = selectedParticipants.map { $0.id }
++            participants.append(services.currentUserID)
+ 
+             let conversation = Conversation(
+                 id: conversationID,
+                 participants: participants,
+                 type: .group,
+@@
+     func resetState() {
+         groupName = ""
+         groupAvatarImage = nil
+-        selectedUserIDs.removeAll()
++        selectedParticipants.removeAll()
++        selectedParticipantIDs.removeAll()
+         searchResults = []
+         searchQuery = ""
+     }
+@@
+         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !query.isEmpty else {
+             await MainActor.run { [weak self] in
+                 self?.searchResults = []
+             }
+             return
+         }
+ 
+         isSearching = true
+         do {
+-            let excluding = selectedUserIDs.union([services.currentUserID])
++            let excluding = selectedParticipantIDs.union([services.currentUserID])
+             let users = try await services.userSearchService.searchUsers(
+                 matching: query,
+                 excludingUserIDs: excluding,
+                 limit: 25
+             )
+ 
+             await MainActor.run { [weak self] in
+                 self?.searchResults = users.map { user in
+                     SearchResult(
+                         id: user.id,
+                         displayName: user.displayName,
+                         email: user.email,
+                         photoURL: user.photoURL
+                     )
+                 }
+             }
+@@
+         isSearching = false
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift
++import PhotosUI
++import SwiftUI
++
++struct GroupCreationView: View {
++    @Environment(\.dismiss) private var dismiss
++    @StateObject private var viewModel: GroupCreationViewModel
++    @State private var photoItem: PhotosPickerItem?
++
++    private let services: ServiceResolver
++    private let onConversationCreated: (String) -> Void
++
++    init(
++        services: ServiceResolver,
++        onConversationCreated: @escaping (String) -> Void
++    ) {
++        self.services = services
++        self.onConversationCreated = onConversationCreated
++        _viewModel = StateObject(wrappedValue: GroupCreationViewModel(services: services))
++    }
++
++    var body: some View {
++        NavigationStack {
++            content
++                .navigationTitle("New Group")
++                .navigationBarTitleDisplayMode(.inline)
++                .toolbar {
++                    ToolbarItem(placement: .cancellationAction) {
++                        Button("Cancel", action: dismiss.callAsFunction)
++                    }
++
++                    ToolbarItem(placement: .confirmationAction) {
++                        Button(action: createGroup) {
++                            if viewModel.isSaving {
++                                ProgressView()
++                            } else {
++                                Text("Create")
++                                    .fontWeight(.semibold)
++                            }
++                        }
++                        .disabled(viewModel.isSaving)
++                    }
++                }
++        }
++        .task(id: photoItem) {
++            await loadPhoto()
++        }
++        .alert("Oops", isPresented: .constant(viewModel.errorMessage != nil), actions: {
++            Button("OK") { viewModel.errorMessage = nil }
++        }, message: {
++            Text(viewModel.errorMessage ?? "Unknown error")
++        })
++    }
++
++    private var content: some View {
++        Form {
++            Section("Group Details") {
++                TextField("Group Name", text: $viewModel.groupName)
++
++                PhotosPicker(selection: $photoItem, matching: .images) {
++                    HStack {
++                        if let image = viewModel.groupAvatarImage {
++                            Image(uiImage: image)
++                                .resizable()
++                                .scaledToFill()
++                                .frame(width: 44, height: 44)
++                                .clipShape(Circle())
++                        } else {
++                            ZStack {
++                                Circle()
++                                    .fill(Color(.systemGray5))
++                                    .frame(width: 44, height: 44)
++                                Image(systemName: "photo")
++                                    .foregroundStyle(.secondary)
++                            }
++                        }
++
++                        Text(viewModel.groupAvatarImage == nil ? "Add Photo" : "Change Photo")
++                            .foregroundStyle(.primary)
++                    }
++                }
++            }
++
++            if !viewModel.selectedParticipants.isEmpty {
++                Section("Selected Participants") {
++                    ForEach(viewModel.selectedParticipants) { participant in
++                        HStack {
++                            avatar(for: participant)
++                            VStack(alignment: .leading) {
++                                Text(participant.displayName)
++                                    .font(.body)
++                                if let email = participant.email {
++                                    Text(email)
++                                        .font(.caption)
++                                        .foregroundStyle(.secondary)
++                                }
++                            }
++                            Spacer()
++                            Button {
++                                viewModel.removeParticipant(withID: participant.id)
++                            } label: {
++                                Image(systemName: "xmark.circle.fill")
++                                    .foregroundStyle(.secondary)
++                            }
++                            .buttonStyle(.borderless)
++                        }
++                        .padding(.vertical, 4)
++                    }
++                }
++            }
++
++            Section("Add Participants") {
++                searchField
++
++                if viewModel.isSearching {
++                    HStack {
++                        ProgressView()
++                        Text("Searching…")
++                            .foregroundStyle(.secondary)
++                    }
++                } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
++                    Text("No matches found")
++                        .foregroundStyle(.secondary)
++                } else {
++                    ForEach(viewModel.searchResults) { result in
++                        HStack {
++                            avatar(for: result)
++                            VStack(alignment: .leading) {
++                                Text(result.displayName)
++                                    .font(.body)
++                                if let email = result.email {
++                                    Text(email)
++                                        .font(.caption)
++                                        .foregroundStyle(.secondary)
++                                }
++                            }
++                            Spacer()
++                            if viewModel.isSelected(result) {
++                                Image(systemName: "checkmark.circle.fill")
++                                    .foregroundStyle(Color.accentColor)
++                            }
++                        }
++                        .contentShape(Rectangle())
++                        .onTapGesture {
++                            viewModel.toggleSelection(result)
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    private var searchField: some View {
++        HStack {
++            Image(systemName: "magnifyingglass")
++                .foregroundStyle(.secondary)
++            TextField("Search by name or email", text: $viewModel.searchQuery)
++                .textInputAutocapitalization(.never)
++                .disableAutocorrection(true)
++                .onSubmit { viewModel.searchUsersImmediately() }
++            if !viewModel.searchQuery.isEmpty {
++                Button {
++                    viewModel.searchQuery = ""
++                } label: {
++                    Image(systemName: "xmark.circle.fill")
++                        .foregroundStyle(.secondary)
++                }
++                .buttonStyle(.plain)
++            }
++        }
++    }
++
++    private func avatar(for result: GroupCreationViewModel.SearchResult) -> some View {
++        Group {
++            if let url = result.photoURL {
++                AsyncImage(url: url) { image in
++                    image.resizable()
++                        .scaledToFill()
++                } placeholder: {
++                    Circle()
++                        .fill(Color(.systemGray5))
++                        .overlay(
++                            ProgressView()
++                        )
++                }
++            } else {
++                Circle()
++                    .fill(Color(.systemGray5))
++                    .overlay(
++                        Text(initials(from: result.displayName))
++                            .font(.footnote.weight(.semibold))
++                            .foregroundStyle(.secondary)
++                    )
++            }
++        }
++        .frame(width: 36, height: 36)
++        .clipShape(Circle())
++    }
++
++    private func initials(from name: String) -> String {
++        let parts = name.split(separator: " ")
++        return parts.prefix(2).map { $0.prefix(1).uppercased() }.joined()
++    }
++
++    private func createGroup() {
++        Task {
++            if let conversationID = await viewModel.createGroupConversation() {
++                onConversationCreated(conversationID)
++                dismiss()
++            }
++        }
++    }
++
++    private func loadPhoto() async {
++        guard let photoItem else { return }
++        do {
++            if let data = try await photoItem.loadTransferable(type: Data.self),
++               let image = UIImage(data: data) {
++                await MainActor.run {
++                    viewModel.groupAvatarImage = image
++                }
++            }
++        } catch {
++            await MainActor.run {
++                viewModel.errorMessage = error.localizedDescription
++            }
++        }
++    }
++}
++
++#Preview {
++    GroupCreationView(services: ServiceResolver.previewResolver) { _ in }
++}
++
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift
+@@
+     var lastSyncedAt: Date?
+     var pendingUploadCount: Int
+     var pendingDownloadCount: Int
++    var createdAt: Date?
++    var updatedAt: Date?
+ 
+     init(
+         id: String,
+         title: String,
+         avatarURL: URL? = nil,
+         type: LocalConversationType,
+         participantIDs: [String] = [],
+         lastMessageTimestamp: Date? = nil,
+         lastMessagePreview: String? = nil,
+         unreadCounts: [String: Int] = [:],
+         aiCategory: LocalMessageCategory? = nil,
+         lastSyncedAt: Date? = nil,
+         pendingUploadCount: Int = 0,
+-        pendingDownloadCount: Int = 0
++        pendingDownloadCount: Int = 0,
++        createdAt: Date? = nil,
++        updatedAt: Date? = nil
+     ) {
+         self.id = id
+         self.title = title
+         self.avatarURL = avatarURL
+         self.type = type
+         self.participantIDs = participantIDs
+         self.lastMessageTimestamp = lastMessageTimestamp
+         self.lastMessagePreview = lastMessagePreview
+         self.unreadCounts = unreadCounts
+         self.aiCategory = aiCategory
+         self.lastSyncedAt = lastSyncedAt
+         self.pendingUploadCount = pendingUploadCount
+         self.pendingDownloadCount = pendingDownloadCount
++        self.createdAt = createdAt
++        self.updatedAt = updatedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+@@
+             let conversation = createDefault()
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
+             updateConversationSummary(for: conversation)
+             context.insert(conversation)
+@@
+         if let conversation = target.conversation {
+             updateConversationSummary(for: conversation)
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/Message.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+@@
+     @Published var groupAvatarImage: UIImage?
+     @Published private(set) var isSaving: Bool = false
+@@
+-        guard selectedParticipants.count >= 2 else {
+-            errorMessage = "Select at least two participants."
++        guard selectedParticipants.count >= 2 else {
++            errorMessage = "Add at least two people to form a group."
+             return nil
+         }
+@@
+-            let conversation = Conversation(
++            let conversation = Conversation(
+                 id: conversationID,
+                 participants: participants,
+                 type: .group,
+                 title: trimmedName,
+                 avatarURL: avatarURL,
+                 lastMessage: nil,
+                 lastMessageTime: nil,
+                 unreadCount: [:],
+                 aiCategory: nil,
+                 createdAt: Date(),
+                 updatedAt: Date()
+             )
+ 
+             try await services.conversationRepository.upsertConversation(conversation)
+             try services.localDataManager.upsertConversation(
+                 LocalConversation(
+                     id: conversation.id,
+                     title: trimmedName,
+                     avatarURL: avatarURL,
+                     type: .group,
+                     participantIDs: participants,
+                     lastMessageTimestamp: nil,
+                     lastMessagePreview: nil,
+                     unreadCounts: [:],
+                     aiCategory: nil,
+-                    lastSyncedAt: Date()
++                    lastSyncedAt: Date(),
++                    createdAt: Date(),
++                    updatedAt: Date()
+                 )
+             )
+@@
+         do {
+-            let excluding = selectedParticipantIDs.union([services.currentUserID])
++            let excluding = selectedParticipantIDs.union([services.currentUserID])
+             let users = try await services.userSearchService.searchUsers(
+                 matching: query,
+                 excludingUserIDs: excluding,
+                 limit: 25
+             )
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift
+@@
+-        if documents.isEmpty {
+-            // Fallback to prefix search on display name using range query
+-            let endRange = lowercaseQuery + "\u{f8ff}"
+-            let displayNameQuery = collection
+-                .order(by: "displayName_lowercase")
+-                .start(at: [lowercaseQuery])
+-                .end(at: [endRange])
+-                .limit(to: limit)
+-
+-            let snapshot = try await displayNameQuery.getDocuments()
+-            documents = snapshot.documents
+-        }
+-
+-        var users = documents.compactMap { document in
+-            User(documentID: document.documentID, data: document.data())
+-        }
+-
+-        // Fallback filtering for partial email matches if no display name index accessible
+-        if documents.isEmpty {
+-            let allSnapshot = try await collection
+-                .order(by: "displayName")
+-                .limit(to: limit * 2)
+-                .getDocuments()
+-            users = allSnapshot.documents.compactMap { User(documentID: $0.documentID, data: $0.data()) }
+-                .filter { user in
+-                    user.displayName.lowercased().contains(lowercaseQuery) ||
+-                    (user.email?.lowercased().contains(lowercaseQuery) ?? false)
+-                }
+-        }
++        if documents.isEmpty {
++            // Fallback to prefix search on display name using range query
++            let endRange = lowercaseQuery + "\u{f8ff}"
++            let displayNameQuery = collection
++                .order(by: "displayName_lowercase")
++                .start(at: [lowercaseQuery])
++                .end(at: [endRange])
++                .limit(to: limit)
++
++            let snapshot = try await displayNameQuery.getDocuments()
++            documents = snapshot.documents
++        }
++
++        var users = documents.compactMap { document in
++            User(documentID: document.documentID, data: document.data())
++        }
++
++        if users.isEmpty {
++            let allSnapshot = try await collection
++                .order(by: "displayName")
++                .limit(to: limit * 3)
++                .getDocuments()
++            users = allSnapshot.documents.compactMap { User(documentID: $0.documentID, data: $0.data()) }
++                .filter { user in
++                    user.displayName.lowercased().contains(lowercaseQuery) ||
++                    (user.email?.lowercased().contains(lowercaseQuery) ?? false)
++                }
++        }
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Implement group creation flow with user search, selection, and Firestore conversation creation
+- [ ] Update chat experience for group conversations (header, sender labels, participant info)
+- [ ] Extend services/data models to support group metadata and syncing
+- [ ] Add unit and integration tests for group creation and messaging
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationListView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationListView.swift
+@@
+-                Text("New conversation flow coming soon")
+-                    .presentationDetents([.medium])
++                GroupCreationView(services: viewModel.services) { conversationID in
++                    viewModel.refresh()
++                    isPresentingNewConversation = false
++                }
++                .presentationDetents([.medium, .large])
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationListView.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning navigation and data updates in GroupCreationView**</details></think>
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "LocalConversation\(" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 9 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `./MessageAI/ViewModels/GroupCreationViewModel.swift` | `LocalConversation(` | L107 |
+| `./MessageAI/Services/Messaging/MessageListenerService.swift` | `createDefault: makeLocalConversation(from: conversation)` | L181 |
+| `./MessageAI/Services/Messaging/MessageListenerService.swift` | `private func makeLocalConversation(from conversation: Conversation) -> LocalConversation \{` | L218 |
+| `./MessageAI/Services/Messaging/MessageListenerService.swift` | `LocalConversation(` | L219 |
+| `./MessageAITests/LocalDataManagerTests.swift` | `createDefault: LocalConversation(` | L23 |
+| `./MessageAITests/LocalDataManagerTests.swift` | `createDefault: LocalConversation(` | L41 |
+| `./MessageAITests/LocalDataManagerTests.swift` | `createDefault: LocalConversation(` | L73 |
+| `./MessageAITests/LocalDataManagerTests.swift` | `createDefault: LocalConversation(` | L116 |
+| `./MessageAITests/LocalDataManagerTests.swift` | `createDefault: LocalConversation(` | L147 |
+
+
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageListenerService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageListenerService.swift
+@@
+     private func makeLocalConversation(from conversation: Conversation) -> LocalConversation {
+         LocalConversation(
+             id: conversation.id,
+             title: conversation.title ?? "Conversation",
++            avatarURL: conversation.avatarURL,
+             type: LocalConversationType(rawValue: conversation.type.rawValue) ?? .oneOnOne,
+             participantIDs: conversation.participants,
+             lastMessageTimestamp: conversation.lastMessageTime,
+             lastMessagePreview: makeLastMessagePreview(conversation.lastMessage),
+             unreadCounts: conversation.unreadCount,
+             aiCategory: conversation.aiCategory.flatMap { LocalMessageCategory(rawValue: $0.rawValue) },
+-            lastSyncedAt: clock()
++            lastSyncedAt: clock(),
++            createdAt: conversation.createdAt,
++            updatedAt: conversation.updatedAt
+         )
+     }
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/LocalDataManagerTests.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/LocalDataManagerTests.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/LocalDataManagerTests.swift
+@@
+         try manager.upsertConversation(
+             id: conversationID,
+             createDefault: LocalConversation(
+                 id: conversationID,
+                 title: "Chat",
++                avatarURL: nil,
+                 type: .oneOnOne
+             )
+         ) { conversation in
+             conversation.title = "Updated Chat"
+         }
+@@
+         try manager.upsertConversation(
+             id: conversationID,
+             createDefault: LocalConversation(
+                 id: conversationID,
+                 title: "Messages",
++                avatarURL: nil,
+                 type: .oneOnOne
+             )
+         ) { _ in }
+@@
+         try manager.upsertConversation(
+             id: conversationID,
+             createDefault: LocalConversation(
+                 id: conversationID,
+                 title: "History",
++                avatarURL: nil,
+                 type: .oneOnOne
+             )
+         ) { _ in }
+@@
+         try manager.upsertConversation(
+             id: conversationID,
+             createDefault: LocalConversation(
+                 id: conversationID,
+                 title: "Sync",
++                avatarURL: nil,
+                 type: .oneOnOne
+             )
+         ) { _ in }
+@@
+         try manager.upsertConversation(
+             id: conversationID,
+             createDefault: LocalConversation(
+                 id: conversationID,
+                 title: "Delete",
++                avatarURL: nil,
+                 type: .oneOnOne
+             )
+         ) { _ in }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAITests/LocalDataManagerTests.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        if let conversation = try conversation(withID: id) {
++        if let conversation = try conversation(withID: id) {
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
+             updateConversationSummary(for: conversation)
+         } else {
+             let conversation = createDefault()
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
++            conversation.createdAt = conversation.createdAt ?? Date()
++            conversation.updatedAt = Date()
+             updateConversationSummary(for: conversation)
+             context.insert(conversation)
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/Conversation.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+@@
+-        guard selectedParticipants.count >= 2 else {
+-            errorMessage = "Add at least two people to form a group."
++        guard selectedParticipants.count >= 2 else {
++            errorMessage = "Add at least two people so the group isn’t empty."
+             return nil
+         }
+@@
+             let conversation = Conversation(
+                 id: conversationID,
+                 participants: participants,
+                 type: .group,
+                 title: trimmedName,
+                 avatarURL: avatarURL,
+                 lastMessage: nil,
+                 lastMessageTime: nil,
+                 unreadCount: [:],
+                 aiCategory: nil,
+                 createdAt: Date(),
+                 updatedAt: Date()
+             )
+ 
+-            try await services.conversationRepository.upsertConversation(conversation)
++            try await services.conversationRepository.upsertConversation(conversation)
+             try services.localDataManager.upsertConversation(
+                 LocalConversation(
+                     id: conversation.id,
+                     title: trimmedName,
+                     avatarURL: avatarURL,
+@@
+                     aiCategory: nil,
+                     lastSyncedAt: Date(),
+                     createdAt: Date(),
+                     updatedAt: Date()
+                 )
+             )
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserRepository.swift
+@@
+     public func createOrUpdateUser(_ user: User) async throws {
+         let data = user.firestoreData()
+         try await usersCollection
+             .document(user.id)
+             .setData(data, merge: true)
+-        try await usersCollection
+-            .document(user.id)
+-            .setData([
+-                "displayName_lowercase": user.displayNameLowercase
+-            ], merge: true)
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift
+@@
+-        if documents.isEmpty {
+-            // Fallback to prefix search on display name using range query
+-            let endRange = lowercaseQuery + "\u{f8ff}"
+-            let displayNameQuery = collection
+-                .order(by: "displayName_lowercase")
+-                .start(at: [lowercaseQuery])
+-                .end(at: [endRange])
+-                .limit(to: limit)
+-
+-            let snapshot = try await displayNameQuery.getDocuments()
+-            documents = snapshot.documents
+-        }
+-
+-        var users = documents.compactMap { document in
+-            User(documentID: document.documentID, data: document.data())
+-        }
+-
+-        if users.isEmpty {
+-            let allSnapshot = try await collection
+-                .order(by: "displayName")
+-                .limit(to: limit * 3)
+-                .getDocuments()
+-            users = allSnapshot.documents.compactMap { User(documentID: $0.documentID, data: $0.data()) }
+-                .filter { user in
+-                    user.displayName.lowercased().contains(lowercaseQuery) ||
+-                    (user.email?.lowercased().contains(lowercaseQuery) ?? false)
+-                }
+-        }
++        if documents.isEmpty {
++            // Fallback to prefix search by display name via range query if the indexed field is available.
++            do {
++                let endRange = lowercaseQuery + "\u{f8ff}"
++                let displayNameQuery = collection
++                    .order(by: "displayName_lowercase")
++                    .start(at: [lowercaseQuery])
++                    .end(at: [endRange])
++                    .limit(to: limit)
++
++                let snapshot = try await displayNameQuery.getDocuments()
++                documents = snapshot.documents
++            } catch {
++                documents = []
++            }
++        }
++
++        var users = documents.compactMap { document in
++            User(documentID: document.documentID, data: document.data())
++        }
++
++        if users.isEmpty {
++            let snapshot = try await collection
++                .order(by: "displayName")
++                .limit(to: limit * 3)
++                .getDocuments()
++            users = snapshot.documents.compactMap { User(documentID: $0.documentID, data: $0.data()) }
++                .filter { user in
++                    user.displayName.lowercased().contains(lowercaseQuery) ||
++                    (user.email?.lowercased().contains(lowercaseQuery) ?? false)
++                }
++        }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift
+@@
+-        if users.isEmpty {
+-            let snapshot = try await collection
+-                .order(by: "displayName")
+-                .limit(to: limit * 3)
+-                .getDocuments()
++        if users.isEmpty {
++            let snapshot = try await collection
++                .order(by: "displayName")
++                .limit(to: max(limit * 2, 25))
++                .getDocuments()
+             users = snapshot.documents.compactMap { User(documentID: $0.documentID, data: $0.data()) }
+                 .filter { user in
+                     user.displayName.lowercased().contains(lowercaseQuery) ||
+                     (user.email?.lowercased().contains(lowercaseQuery) ?? false)
+                 }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/UserSearchService.swift
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "presentationDetents" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI" • 1 match</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `MessageAI/Views/Conversations/ConversationListView.swift` | `.presentationDetents([.medium, .large])` | L33 |
+
+
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing Group Creation Work and Next Steps**
+
+I've reviewed the additions and updates for group creation—including new services, view model, and avatar metadata changes—and I'm planning to gather exact line numbers for code citations by listing files with numbering through terminal commands. This will help me compile precise snippets with start/end line references before delivering the final summary and outlining next steps.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/ViewModels/GroupCreationViewModel.swift | sed -n '1,160p'
+```
+
+```
+     1	import Combine
+     2	import Foundation
+     3	import SwiftUI
+     4	import UIKit
+     5	
+     6	@MainActor
+     7	final class GroupCreationViewModel: ObservableObject {
+     8	    struct SearchResult: Identifiable, Equatable {
+     9	        let id: String
+    10	        let displayName: String
+    11	        let email: String?
+    12	        let photoURL: URL?
+    13	    }
+    14	
+    15	    @Published var searchQuery: String = "" {
+    16	        didSet { searchTask?.cancel(); scheduleSearch() }
+    17	    }
+    18	    @Published private(set) var searchResults: [SearchResult] = []
+    19	    @Published private(set) var isSearching: Bool = false
+    20	    @Published private(set) var errorMessage: String?
+    21	    @Published private(set) var selectedParticipants: [SearchResult] = []
+    22	    @Published var groupName: String = ""
+    23	    @Published var groupAvatarImage: UIImage?
+    24	    @Published private(set) var isSaving: Bool = false
+    25	
+    26	    private let services: ServiceResolver
+    27	    private var searchTask: Task<Void, Never>?
+    28	    private var cancellables: Set<AnyCancellable> = []
+    29	    private var selectedParticipantIDs: Set<String> = []
+    30	
+    31	    init(services: ServiceResolver) {
+    32	        self.services = services
+    33	    }
+    34	
+    35	    func toggleSelection(_ result: SearchResult) {
+    36	        if selectedParticipantIDs.contains(result.id) {
+    37	            selectedParticipantIDs.remove(result.id)
+    38	            selectedParticipants.removeAll { $0.id == result.id }
+    39	        } else {
+    40	            selectedParticipantIDs.insert(result.id)
+    41	            selectedParticipants.append(result)
+    42	        }
+    43	    }
+    44	
+    45	    func isSelected(_ result: SearchResult) -> Bool {
+    46	        selectedParticipantIDs.contains(result.id)
+    47	    }
+    48	
+    49	    func removeParticipant(withID id: String) {
+    50	        guard selectedParticipantIDs.contains(id) else { return }
+    51	        selectedParticipantIDs.remove(id)
+    52	        selectedParticipants.removeAll { $0.id == id }
+    53	    }
+    54	
+    55	    func searchUsersImmediately() {
+    56	        searchTask?.cancel()
+    57	        executeSearch()
+    58	    }
+    59	
+    60	    @discardableResult
+    61	    func createGroupConversation() async -> String? {
+    62	        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+    63	        guard !trimmedName.isEmpty else {
+    64	            errorMessage = "Group needs a name."
+    65	            return nil
+    66	        }
+    67	
+    68	        guard selectedParticipants.count >= 2 else {
+    69	            errorMessage = "Add at least two people so the group isn’t empty."
+    70	            return nil
+    71	        }
+    72	
+    73	        isSaving = true
+    74	        errorMessage = nil
+    75	
+    76	        do {
+    77	            let conversationID = UUID().uuidString
+    78	            var avatarURL: URL?
+    79	
+    80	            if let image = groupAvatarImage,
+    81	               let data = image.jpegData(compressionQuality: 0.7) {
+    82	                avatarURL = try await services.groupAvatarService.uploadGroupAvatar(
+    83	                    data: data,
+    84	                    conversationID: conversationID
+    85	                )
+    86	            }
+    87	
+    88	            var participants = selectedParticipants.map { $0.id }
+    89	            participants.append(services.currentUserID)
+    90	
+    91	            let conversation = Conversation(
+    92	                id: conversationID,
+    93	                participants: participants,
+    94	                type: .group,
+    95	                title: trimmedName,
+    96	                avatarURL: avatarURL,
+    97	                lastMessage: nil,
+    98	                lastMessageTime: nil,
+    99	                unreadCount: [:],
+   100	                aiCategory: nil,
+   101	                createdAt: Date(),
+   102	                updatedAt: Date()
+   103	            )
+   104	
+   105	            try await services.conversationRepository.upsertConversation(conversation)
+   106	            try services.localDataManager.upsertConversation(
+   107	                LocalConversation(
+   108	                    id: conversation.id,
+   109	                    title: trimmedName,
+   110	                    avatarURL: avatarURL,
+   111	                    type: .group,
+   112	                    participantIDs: participants,
+   113	                    lastMessageTimestamp: nil,
+   114	                    lastMessagePreview: nil,
+   115	                    unreadCounts: [:],
+   116	                    aiCategory: nil,
+   117	                    lastSyncedAt: Date(),
+   118	                    createdAt: Date(),
+   119	                    updatedAt: Date()
+   120	                )
+   121	            )
+   122	
+   123	            resetState()
+   124	            isSaving = false
+   125	            return conversation.id
+   126	        } catch {
+   127	            errorMessage = error.localizedDescription
+   128	        }
+   129	
+   130	        isSaving = false
+   131	        return nil
+   132	    }
+   133	
+   134	    func resetState() {
+   135	        groupName = ""
+   136	        groupAvatarImage = nil
+   137	        selectedParticipants.removeAll()
+   138	        selectedParticipantIDs.removeAll()
+   139	        searchResults = []
+   140	        searchQuery = ""
+   141	    }
+   142	
+   143	    private func scheduleSearch() {
+   144	        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+   145	            searchResults = []
+   146	            return
+   147	        }
+   148	
+   149	        searchTask = Task { [weak self] in
+   150	            try? await Task.sleep(for: .milliseconds(300))
+   151	            guard !Task.isCancelled else { return }
+   152	            await self?.executeSearch()
+   153	        }
+   154	    }
+   155	
+   156	    private func executeSearch() async {
+   157	        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+   158	        guard !query.isEmpty else {
+   159	            await MainActor.run { [weak self] in
+   160	                self?.searchResults = []
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing group creation implementation progress**
+
+I'll prepare a final summary highlighting new files and modifications, including key snippets from GroupCreationViewModel, GroupCreationView, and ServiceResolver showing core changes. I'll note tests haven’t been run yet and point out next steps like verifying Firestore indexes and integrating read receipts, citing code snippets appropriately with line ranges and meaningful excerpts.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/Services/ServiceResolver.swift
+```
+
+```
+     1	import Combine
+     2	import Foundation
+     3	
+     4	final class ServiceResolver: ObservableObject {
+     5	    @Published var localDataManager: LocalDataManager
+     6	    @Published var messageListenerService: MessageListenerServiceProtocol
+     7	    @Published var messageService: MessageServiceProtocol
+     8	    @Published var conversationRepository: ConversationRepositoryProtocol
+     9	    @Published var messageRepository: MessageRepositoryProtocol
+    10	    @Published var userSearchService: UserSearchServiceProtocol
+    11	    @Published var groupAvatarService: GroupAvatarUploading
+    12	    @Published var currentUserID: String
+    13	
+    14	    init(
+    15	        localDataManager: LocalDataManager,
+    16	        listenerService: MessageListenerServiceProtocol,
+    17	        messageService: MessageServiceProtocol,
+    18	        conversationRepository: ConversationRepositoryProtocol,
+    19	        messageRepository: MessageRepositoryProtocol,
+    20	        userSearchService: UserSearchServiceProtocol,
+    21	        groupAvatarService: GroupAvatarUploading,
+    22	        currentUserID: String
+    23	    ) {
+    24	        self.localDataManager = localDataManager
+    25	        self.messageListenerService = listenerService
+    26	        self.messageService = messageService
+    27	        self.conversationRepository = conversationRepository
+    28	        self.messageRepository = messageRepository
+    29	        self.userSearchService = userSearchService
+    30	        self.groupAvatarService = groupAvatarService
+    31	        self.currentUserID = currentUserID
+    32	    }
+    33	
+    34	    static var previewResolver: ServiceResolver {
+    35	        let localDataManager = (try? LocalDataManager(inMemory: true)) ?? (try! LocalDataManager(inMemory: true))
+    36	        let conversationRepository = ConversationRepository()
+    37	        let messageRepository = MessageRepository()
+    38	        let listener = MessageListenerService(localDataManager: localDataManager)
+    39	        let messageService = MessageService(
+    40	            localDataManager: localDataManager,
+    41	            conversationRepository: conversationRepository,
+    42	            messageRepository: messageRepository
+    43	        )
+    44	
+    45	        return ServiceResolver(
+    46	            localDataManager: localDataManager,
+    47	            listenerService: listener,
+    48	            messageService: messageService,
+    49	            conversationRepository: conversationRepository,
+    50	            messageRepository: messageRepository,
+    51	            userSearchService: UserSearchService(),
+    52	            groupAvatarService: GroupAvatarService(),
+    53	            currentUserID: "demo"
+    54	        )
+    55	    }
+    56	}
+    57	
+
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Implement group creation flow with user search, selection, and Firestore conversation creation
+- [ ] Update chat experience for group conversations (header, sender labels, participant info)
+- [ ] Extend services/data models to support group metadata and syncing
+- [ ] Add unit and integration tests for group creation and messaging
+
+---
+
+<think><details><summary>Thought Process</summary>**Gathering file modifications and line ranges**</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/Views/Group/GroupCreationView.swift | sed -n '1,220p'
+```
+
+```
+     1	import PhotosUI
+     2	import SwiftUI
+     3	
+     4	struct GroupCreationView: View {
+     5	    @Environment(\.dismiss) private var dismiss
+     6	    @StateObject private var viewModel: GroupCreationViewModel
+     7	    @State private var photoItem: PhotosPickerItem?
+     8	
+     9	    private let services: ServiceResolver
+    10	    private let onConversationCreated: (String) -> Void
+    11	
+    12	    init(
+    13	        services: ServiceResolver,
+    14	        onConversationCreated: @escaping (String) -> Void
+    15	    ) {
+    16	        self.services = services
+    17	        self.onConversationCreated = onConversationCreated
+    18	        _viewModel = StateObject(wrappedValue: GroupCreationViewModel(services: services))
+    19	    }
+    20	
+    21	    var body: some View {
+    22	        NavigationStack {
+    23	            content
+    24	                .navigationTitle("New Group")
+    25	                .navigationBarTitleDisplayMode(.inline)
+    26	                .toolbar {
+    27	                    ToolbarItem(placement: .cancellationAction) {
+    28	                        Button("Cancel", action: dismiss.callAsFunction)
+    29	                    }
+    30	
+    31	                    ToolbarItem(placement: .confirmationAction) {
+    32	                        Button(action: createGroup) {
+    33	                            if viewModel.isSaving {
+    34	                                ProgressView()
+    35	                            } else {
+    36	                                Text("Create")
+    37	                                    .fontWeight(.semibold)
+    38	                            }
+    39	                        }
+    40	                        .disabled(viewModel.isSaving)
+    41	                    }
+    42	                }
+    43	        }
+    44	        .task(id: photoItem) {
+    45	            await loadPhoto()
+    46	        }
+    47	        .alert("Oops", isPresented: .constant(viewModel.errorMessage != nil), actions: {
+    48	            Button("OK") { viewModel.errorMessage = nil }
+    49	        }, message: {
+    50	            Text(viewModel.errorMessage ?? "Unknown error")
+    51	        })
+    52	    }
+    53	
+    54	    private var content: some View {
+    55	        Form {
+    56	            Section("Group Details") {
+    57	                TextField("Group Name", text: $viewModel.groupName)
+    58	
+    59	                PhotosPicker(selection: $photoItem, matching: .images) {
+    60	                    HStack {
+    61	                        if let image = viewModel.groupAvatarImage {
+    62	                            Image(uiImage: image)
+    63	                                .resizable()
+    64	                                .scaledToFill()
+    65	                                .frame(width: 44, height: 44)
+    66	                                .clipShape(Circle())
+    67	                        } else {
+    68	                            ZStack {
+    69	                                Circle()
+    70	                                    .fill(Color(.systemGray5))
+    71	                                    .frame(width: 44, height: 44)
+    72	                                Image(systemName: "photo")
+    73	                                    .foregroundStyle(.secondary)
+    74	                            }
+    75	                        }
+    76	
+    77	                        Text(viewModel.groupAvatarImage == nil ? "Add Photo" : "Change Photo")
+    78	                            .foregroundStyle(.primary)
+    79	                    }
+    80	                }
+    81	            }
+    82	
+    83	            if !viewModel.selectedParticipants.isEmpty {
+    84	                Section("Selected Participants") {
+    85	                    ForEach(viewModel.selectedParticipants) { participant in
+    86	                        HStack {
+    87	                            avatar(for: participant)
+    88	                            VStack(alignment: .leading) {
+    89	                                Text(participant.displayName)
+    90	                                    .font(.body)
+    91	                                if let email = participant.email {
+    92	                                    Text(email)
+    93	                                        .font(.caption)
+    94	                                        .foregroundStyle(.secondary)
+    95	                                }
+    96	                            }
+    97	                            Spacer()
+    98	                            Button {
+    99	                                viewModel.removeParticipant(withID: participant.id)
+   100	                            } label: {
+   101	                                Image(systemName: "xmark.circle.fill")
+   102	                                    .foregroundStyle(.secondary)
+   103	                            }
+   104	                            .buttonStyle(.borderless)
+   105	                        }
+   106	                        .padding(.vertical, 4)
+   107	                    }
+   108	                }
+   109	            }
+   110	
+   111	            Section("Add Participants") {
+   112	                searchField
+   113	
+   114	                if viewModel.isSearching {
+   115	                    HStack {
+   116	                        ProgressView()
+   117	                        Text("Searching…")
+   118	                            .foregroundStyle(.secondary)
+   119	                    }
+   120	                } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
+   121	                    Text("No matches found")
+   122	                        .foregroundStyle(.secondary)
+   123	                } else {
+   124	                    ForEach(viewModel.searchResults) { result in
+   125	                        HStack {
+   126	                            avatar(for: result)
+   127	                            VStack(alignment: .leading) {
+   128	                                Text(result.displayName)
+   129	                                    .font(.body)
+   130	                                if let email = result.email {
+   131	                                    Text(email)
+   132	                                        .font(.caption)
+   133	                                        .foregroundStyle(.secondary)
+   134	                                }
+   135	                            }
+   136	                            Spacer()
+   137	                            if viewModel.isSelected(result) {
+   138	                                Image(systemName: "checkmark.circle.fill")
+   139	                                    .foregroundStyle(Color.accentColor)
+   140	                            }
+   141	                        }
+   142	                        .contentShape(Rectangle())
+   143	                        .onTapGesture {
+   144	                            viewModel.toggleSelection(result)
+   145	                        }
+   146	                    }
+   147	                }
+   148	            }
+   149	        }
+   150	    }
+   151	
+   152	    private var searchField: some View {
+   153	        HStack {
+   154	            Image(systemName: "magnifyingglass")
+   155	                .foregroundStyle(.secondary)
+   156	            TextField("Search by name or email", text: $viewModel.searchQuery)
+   157	                .textInputAutocapitalization(.never)
+   158	                .disableAutocorrection(true)
+   159	                .onSubmit { viewModel.searchUsersImmediately() }
+   160	            if !viewModel.searchQuery.isEmpty {
+   161	                Button {
+   162	                    viewModel.searchQuery = ""
+   163	                } label: {
+   164	                    Image(systemName: "xmark.circle.fill")
+   165	                        .foregroundStyle(.secondary)
+   166	                }
+   167	                .buttonStyle(.plain)
+   168	            }
+   169	        }
+   170	    }
+   171	
+   172	    private func avatar(for result: GroupCreationViewModel.SearchResult) -> some View {
+   173	        Group {
+   174	            if let url = result.photoURL {
+   175	                AsyncImage(url: url) { image in
+   176	                    image.resizable()
+   177	                        .scaledToFill()
+   178	                } placeholder: {
+   179	                    Circle()
+   180	                        .fill(Color(.systemGray5))
+   181	                        .overlay(
+   182	                            ProgressView()
+   183	                        )
+   184	                }
+   185	            } else {
+   186	                Circle()
+   187	                    .fill(Color(.systemGray5))
+   188	                    .overlay(
+   189	                        Text(initials(from: result.displayName))
+   190	                            .font(.footnote.weight(.semibold))
+   191	                            .foregroundStyle(.secondary)
+   192	                    )
+   193	            }
+   194	        }
+   195	        .frame(width: 36, height: 36)
+   196	        .clipShape(Circle())
+   197	    }
+   198	
+   199	    private func initials(from name: String) -> String {
+   200	        let parts = name.split(separator: " ")
+   201	        return parts.prefix(2).map { $0.prefix(1).uppercased() }.joined()
+   202	    }
+   203	
+   204	    private func createGroup() {
+   205	        Task {
+   206	            if let conversationID = await viewModel.createGroupConversation() {
+   207	                onConversationCreated(conversationID)
+   208	                dismiss()
+   209	            }
+   210	        }
+   211	    }
+   212	
+   213	    private func loadPhoto() async {
+   214	        guard let photoItem else { return }
+   215	        do {
+   216	            if let data = try await photoItem.loadTransferable(type: Data.self),
+   217	               let image = UIImage(data: data) {
+   218	                await MainActor.run {
+   219	                    viewModel.groupAvatarImage = image
+   220	                }
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/Services/Database/LocalDataManager.swift | sed -n '1,200p'
+```
+
+```
+     1	import Foundation
+     2	import SwiftData
+     3	
+     4	enum LocalDataManagerError: Error, CustomStringConvertible {
+     5	    case conversationNotFound(String)
+     6	    case messageNotFound(String)
+     7	
+     8	    var description: String {
+     9	        switch self {
+    10	        case let .conversationNotFound(id):
+    11	            return "Conversation not found for id: \(id)"
+    12	        case let .messageNotFound(id):
+    13	            return "Message not found for id: \(id)"
+    14	        }
+    15	    }
+    16	}
+    17	
+    18	@MainActor
+    19	final class LocalDataManager {
+    20	    let container: ModelContainer
+    21	    let context: ModelContext
+    22	
+    23	    init(container: ModelContainer) {
+    24	        self.container = container
+    25	        self.context = container.mainContext
+    26	    }
+    27	
+    28	    init(inMemory: Bool = false) throws {
+    29	        let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
+    30	        let container = try ModelContainer(
+    31	            for: LocalUser.self,
+    32	            LocalConversation.self,
+    33	            LocalMessage.self,
+    34	            configurations: configuration
+    35	        )
+    36	        self.container = container
+    37	        self.context = container.mainContext
+    38	    }
+    39	
+    40	    // MARK: - Conversations
+    41	
+    42	    func upsertConversation(_ conversation: LocalConversation) throws {
+    43	        if conversation.modelContext == nil {
+    44	            context.insert(conversation)
+    45	        }
+    46	        try context.save()
+    47	    }
+    48	
+    49	    func upsertConversation(
+    50	        id: String,
+    51	        createDefault: @autoclosure () -> LocalConversation,
+    52	        updates: (LocalConversation) -> Void
+    53	    ) throws {
+    54	        if let conversation = try conversation(withID: id) {
+    55	            updates(conversation)
+    56	            conversation.lastSyncedAt = Date()
+    57	            updateConversationSummary(for: conversation)
+    58	        } else {
+    59	            let conversation = createDefault()
+    60	            updates(conversation)
+    61	            conversation.lastSyncedAt = Date()
+    62	            conversation.createdAt = conversation.createdAt ?? Date()
+    63	            conversation.updatedAt = Date()
+    64	            updateConversationSummary(for: conversation)
+    65	            context.insert(conversation)
+    66	        }
+    67	        try context.save()
+    68	    }
+    69	
+    70	    func conversation(withID id: String) throws -> LocalConversation? {
+    71	        var descriptor = FetchDescriptor<LocalConversation>(
+    72	            predicate: #Predicate<LocalConversation> { conversation in
+    73	                conversation.id == id
+    74	            }
+    75	        )
+    76	        descriptor.fetchLimit = 1
+    77	        return try context.fetch(descriptor).first
+    78	    }
+    79	
+    80	    func fetchConversations(limit: Int? = nil) throws -> [LocalConversation] {
+    81	        let descriptor = FetchDescriptor<LocalConversation>()
+    82	        let conversations = try context.fetch(descriptor)
+    83	
+    84	        let sorted = conversations.sorted { lhs, rhs in
+    85	            let lhsDate = lhs.lastMessageTimestamp ?? .distantPast
+    86	            let rhsDate = rhs.lastMessageTimestamp ?? .distantPast
+    87	
+    88	            if lhsDate == rhsDate {
+    89	                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    90	            }
+    91	
+    92	            return lhsDate > rhsDate
+    93	        }
+    94	
+    95	        if let limit {
+    96	            return Array(sorted.prefix(limit))
+    97	        }
+    98	
+    99	        return sorted
+   100	    }
+   101	
+   102	    func deleteConversation(_ conversation: LocalConversation) throws {
+   103	        if let existing = try self.conversation(withID: conversation.id) {
+   104	            context.delete(existing)
+   105	            try context.save()
+   106	        }
+   107	    }
+   108	
+   109	    // MARK: - Messages
+   110	
+   111	    func addMessage(_ message: LocalMessage, toConversationID conversationID: String) throws {
+   112	        guard let conversation = try conversation(withID: conversationID) else {
+   113	            throw LocalDataManagerError.conversationNotFound(conversationID)
+   114	        }
+   115	
+   116	        if message.modelContext == nil {
+   117	            message.conversation = conversation
+   118	            context.insert(message)
+   119	        }
+   120	
+   121	        message.syncStatus = .pending
+   122	        message.syncDirection = .upload
+   123	        message.syncAttemptCount = 0
+   124	        if message.status == .sending {
+   125	            message.status = .sent
+   126	        }
+   127	        updateConversationSummary(for: conversation)
+   128	        try context.save()
+   129	    }
+   130	
+   131	    func upsertMessage(
+   132	        id: String,
+   133	        createDefault: @autoclosure () -> LocalMessage,
+   134	        updates: (LocalMessage) -> Void
+   135	    ) throws {
+   136	        var descriptor = FetchDescriptor<LocalMessage>(
+   137	            predicate: #Predicate<LocalMessage> { message in
+   138	                message.id == id
+   139	            }
+   140	        )
+   141	        descriptor.fetchLimit = 1
+   142	
+   143	        let target: LocalMessage
+   144	        if let existing = try context.fetch(descriptor).first {
+   145	            updates(existing)
+   146	            target = existing
+   147	        } else {
+   148	            let message = createDefault()
+   149	            updates(message)
+   150	            context.insert(message)
+   151	            target = message
+   152	        }
+   153	
+   154	        if let conversation = target.conversation {
+   155	            updateConversationSummary(for: conversation)
+   156	        }
+   157	        try context.save()
+   158	    }
+   159	
+   160	    func fetchMessages(
+   161	        forConversationID conversationID: String,
+   162	        limit: Int? = nil,
+   163	        includeFailed: Bool = true
+   164	    ) throws -> [LocalMessage] {
+   165	        let predicate = #Predicate<LocalMessage> { message in
+   166	            message.conversationID == conversationID
+   167	        }
+   168	
+   169	        var descriptor = FetchDescriptor<LocalMessage>(
+   170	            predicate: predicate,
+   171	            sortBy: [
+   172	                SortDescriptor(\LocalMessage.timestamp)
+   173	            ]
+   174	        )
+   175	
+   176	        if let limit {
+   177	            descriptor.fetchLimit = limit
+   178	        }
+   179	
+   180	        var messages = try context.fetch(descriptor)
+   181	
+   182	        if !includeFailed {
+   183	            messages.removeAll { $0.syncStatus == .failed }
+   184	        }
+   185	
+   186	        return messages
+   187	    }
+   188	
+   189	    func message(withID id: String) throws -> LocalMessage {
+   190	        var descriptor = FetchDescriptor<LocalMessage>(
+   191	            predicate: #Predicate<LocalMessage> { message in
+   192	                message.id == id
+   193	            }
+   194	        )
+   195	        descriptor.fetchLimit = 1
+   196	
+   197	        guard let message = try context.fetch(descriptor).first else {
+   198	            throw LocalDataManagerError.messageNotFound(id)
+   199	        }
+   200	
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing PR6 group creation changes**
+
+I’m gathering the key code sections related to PR6 group creation, including GroupCreationView.swift, GroupCreationViewModel.swift, ServiceResolver, and LocalDataManager. I’ll provide code snippets with proper line citations highlighting additions like new services and models, note the conversation view update to open group creation, and mention next steps such as implementing tests and running them since we haven’t done so yet.</details></think>
+
+---
+
+## Group Creation Flow
+
+- Added a fully featured group creation screen with search, participant chips, optional avatar picker, and completion callback wired into the conversation list sheet flow.[^1]
+- Implemented `GroupCreationViewModel` to debounce Firebase-backed user search, manage selections, upload optional avatars, and create both remote and local conversation records with metadata.[^2]
+- Extended `ServiceResolver` to expose the repositories, search, and avatar services needed for group setup (init + preview).[^^3]
+- Updated models and persistence to carry group avatar/metadata (`Conversation`, `LocalConversation`) and ensure local upserts seed timestamps.[^4][^5]
+- Introduced `UserSearchService` (Firestore queries), `GroupAvatarService` (Storage uploads), and surfaced the new creation UI from the compose button.[^6][^7]
+
+## Next Steps
+- Add unit coverage for the new view model logic and service fallbacks.
+- Write an integration test that exercises group creation + local persistence.
+- Run the existing test suite once new tests land.
+
+[^1]: ```1:150:MessageAI/Views/Group/GroupCreationView.swift
+struct GroupCreationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel: GroupCreationViewModel
+    // ... existing code ...
+```
+
+[^2]: ```1:132:MessageAI/ViewModels/GroupCreationViewModel.swift
+@MainActor
+final class GroupCreationViewModel: ObservableObject {
+    struct SearchResult: Identifiable, Equatable {
+        let id: String
+        let displayName: String
+        // ... existing code ...
+```
+
+[^3]: ```1:55:MessageAI/Services/ServiceResolver.swift
+final class ServiceResolver: ObservableObject {
+    @Published var localDataManager: LocalDataManager
+    @Published var messageListenerService: MessageListenerServiceProtocol
+    // ... existing code ...
+```
+
+[^4]: ```9:62:MessageAI/Models/Conversation.swift
+public struct Conversation: Identifiable, Codable, Equatable {
+    public var id: String
+    public var participants: [String]
+    // ... existing code ...
+```
+
+[^5]: ```18:120:MessageAI/Models/LocalModels/LocalConversation.swift
+@Model
+final class LocalConversation {
+    @Attribute(.unique) var id: String
+    var title: String
+    // ... existing code ...
+```
+
+[^6]: ```23:85:MessageAI/Services/Database/UserSearchService.swift
+public final class UserSearchService: UserSearchServiceProtocol {
+    private enum Collection: String {
+        case users
+    }
+    // ... existing code ...
+```
+
+[^7]: ```1:64:MessageAI/Views/Conversations/ConversationListView.swift
+NavigationStack {
+    ZStack {
+        listView
+        // ... existing code ...
+```
+
+---
+
+_**User (2025-10-22 15:43Z)**_
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift:57:9 'async' call in a function that does not support concurrency
+
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Fixing async call in synchronous function**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+@@
+     func searchUsersImmediately() {
+         searchTask?.cancel()
+-        executeSearch()
++        searchTask = Task { [weak self] in
++            await self?.executeSearch()
++        }
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && swiftlint lint --path MessageAI/ViewModels/GroupCreationViewModel.swift
+```
+
+```
+(eval):1: command not found: swiftlint
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && git status -sb
+```
+
+```
+## main...origin/main [ahead 1]
+ M .specstory/history/2025-10-22_15-43Z-look-at-@prd-md-,-@tasks-md-,-and-@arch-mermaid-for.md
+ M MessageAI/App/MessageAIApp.swift
+ M MessageAI/Models/Conversation.swift
+ M MessageAI/Models/LocalModels/LocalConversation.swift
+ M MessageAI/Models/User.swift
+ M MessageAI/Services/Database/LocalDataManager.swift
+ M MessageAI/Services/Messaging/MessageListenerService.swift
+ M MessageAI/Services/ServiceResolver.swift
+ M MessageAI/Views/Conversations/ConversationListView.swift
+ M MessageAITests/LocalDataManagerTests.swift
+?? MessageAI/Services/Database/UserSearchService.swift
+?? MessageAI/Services/Storage/GroupAvatarService.swift
+?? MessageAI/ViewModels/GroupCreationViewModel.swift
+?? MessageAI/Views/Group/
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/ViewModels/GroupCreationViewModel.swift | sed -n '1,80p'
+```
+
+```
+     1	import Combine
+     2	import Foundation
+     3	import SwiftUI
+     4	import UIKit
+     5	
+     6	@MainActor
+     7	final class GroupCreationViewModel: ObservableObject {
+     8	    struct SearchResult: Identifiable, Equatable {
+     9	        let id: String
+    10	        let displayName: String
+    11	        let email: String?
+    12	        let photoURL: URL?
+    13	    }
+    14	
+    15	    @Published var searchQuery: String = "" {
+    16	        didSet { searchTask?.cancel(); scheduleSearch() }
+    17	    }
+    18	    @Published private(set) var searchResults: [SearchResult] = []
+    19	    @Published private(set) var isSearching: Bool = false
+    20	    @Published private(set) var errorMessage: String?
+    21	    @Published private(set) var selectedParticipants: [SearchResult] = []
+    22	    @Published var groupName: String = ""
+    23	    @Published var groupAvatarImage: UIImage?
+    24	    @Published private(set) var isSaving: Bool = false
+    25	
+    26	    private let services: ServiceResolver
+    27	    private var searchTask: Task<Void, Never>?
+    28	    private var cancellables: Set<AnyCancellable> = []
+    29	    private var selectedParticipantIDs: Set<String> = []
+    30	
+    31	    init(services: ServiceResolver) {
+    32	        self.services = services
+    33	    }
+    34	
+    35	    func toggleSelection(_ result: SearchResult) {
+    36	        if selectedParticipantIDs.contains(result.id) {
+    37	            selectedParticipantIDs.remove(result.id)
+    38	            selectedParticipants.removeAll { $0.id == result.id }
+    39	        } else {
+    40	            selectedParticipantIDs.insert(result.id)
+    41	            selectedParticipants.append(result)
+    42	        }
+    43	    }
+    44	
+    45	    func isSelected(_ result: SearchResult) -> Bool {
+    46	        selectedParticipantIDs.contains(result.id)
+    47	    }
+    48	
+    49	    func removeParticipant(withID id: String) {
+    50	        guard selectedParticipantIDs.contains(id) else { return }
+    51	        selectedParticipantIDs.remove(id)
+    52	        selectedParticipants.removeAll { $0.id == id }
+    53	    }
+    54	
+    55	    func searchUsersImmediately() {
+    56	        searchTask?.cancel()
+    57	        searchTask = Task { [weak self] in
+    58	            await self?.executeSearch()
+    59	        }
+    60	    }
+    61	
+    62	    @discardableResult
+    63	    func createGroupConversation() async -> String? {
+    64	        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+    65	        guard !trimmedName.isEmpty else {
+    66	            errorMessage = "Group needs a name."
+    67	            return nil
+    68	        }
+    69	
+    70	        guard selectedParticipants.count >= 2 else {
+    71	            errorMessage = "Add at least two people so the group isn’t empty."
+    72	            return nil
+    73	        }
+    74	
+    75	        isSaving = true
+    76	        errorMessage = nil
+    77	
+    78	        do {
+    79	            let conversationID = UUID().uuidString
+    80	            var avatarURL: URL?
+
+```
+
+---
+
+The concurrency warning is fixed. `searchUsersImmediately()` now launches the async lookup within a Task, so we’re no longer invoking an async method from a synchronous context.[^1]
+
+No other files changed from that fix; you’re all set.
+
+[^1]: ```55:59:MessageAI/ViewModels/GroupCreationViewModel.swift
+    func searchUsersImmediately() {
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            await self?.executeSearch()
+        }
+    }
+```
+
+---
+
+_**User (2025-10-22 21:46Z)**_
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift:48:38 Cannot assign to property: 'errorMessage' setter is inaccessible
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift:224:27 Cannot assign to property: 'errorMessage' setter is inaccessible
+
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Planning error message handling changes**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/GroupCreationViewModel.swift
+@@
+     func searchUsersImmediately() {
+         searchTask?.cancel()
+         searchTask = Task { [weak self] in
+             await self?.executeSearch()
+         }
+     }
+ 
++    func presentError(_ message: String) {
++        errorMessage = message
++    }
++
++    func clearError() {
++        errorMessage = nil
++    }
++
+     @discardableResult
+     func createGroupConversation() async -> String? {
+         let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !trimmedName.isEmpty else {
+             errorMessage = "Group needs a name."
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Group/GroupCreationView.swift
+@@
+         }
+         .task(id: photoItem) {
+             await loadPhoto()
+         }
+-        .alert("Oops", isPresented: .constant(viewModel.errorMessage != nil), actions: {
+-            Button("OK") { viewModel.errorMessage = nil }
+-        }, message: {
+-            Text(viewModel.errorMessage ?? "Unknown error")
+-        })
++        .alert("Oops", isPresented: Binding(
++            get: { viewModel.errorMessage != nil },
++            set: { _ in viewModel.clearError() }
++        )) {
++            Button("OK") { viewModel.clearError() }
++        } message: {
++            Text(viewModel.errorMessage ?? "Unknown error")
++        }
+@@
+         do {
+             if let data = try await photoItem.loadTransferable(type: Data.self),
+                let image = UIImage(data: data) {
+                 await MainActor.run {
+                     viewModel.groupAvatarImage = image
+                 }
+             }
+         } catch {
+             await MainActor.run {
+-                viewModel.errorMessage = error.localizedDescription
++                viewModel.presentError(error.localizedDescription)
+             }
+         }
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/ViewModels/GroupCreationViewModel.swift | sed -n '1,120p'
+```
+
+```
+     1	import Combine
+     2	import Foundation
+     3	import SwiftUI
+     4	import UIKit
+     5	
+     6	@MainActor
+     7	final class GroupCreationViewModel: ObservableObject {
+     8	    struct SearchResult: Identifiable, Equatable {
+     9	        let id: String
+    10	        let displayName: String
+    11	        let email: String?
+    12	        let photoURL: URL?
+    13	    }
+    14	
+    15	    @Published var searchQuery: String = "" {
+    16	        didSet { searchTask?.cancel(); scheduleSearch() }
+    17	    }
+    18	    @Published private(set) var searchResults: [SearchResult] = []
+    19	    @Published private(set) var isSearching: Bool = false
+    20	    @Published private(set) var errorMessage: String?
+    21	    @Published private(set) var selectedParticipants: [SearchResult] = []
+    22	    @Published var groupName: String = ""
+    23	    @Published var groupAvatarImage: UIImage?
+    24	    @Published private(set) var isSaving: Bool = false
+    25	
+    26	    private let services: ServiceResolver
+    27	    private var searchTask: Task<Void, Never>?
+    28	    private var cancellables: Set<AnyCancellable> = []
+    29	    private var selectedParticipantIDs: Set<String> = []
+    30	
+    31	    init(services: ServiceResolver) {
+    32	        self.services = services
+    33	    }
+    34	
+    35	    func toggleSelection(_ result: SearchResult) {
+    36	        if selectedParticipantIDs.contains(result.id) {
+    37	            selectedParticipantIDs.remove(result.id)
+    38	            selectedParticipants.removeAll { $0.id == result.id }
+    39	        } else {
+    40	            selectedParticipantIDs.insert(result.id)
+    41	            selectedParticipants.append(result)
+    42	        }
+    43	    }
+    44	
+    45	    func isSelected(_ result: SearchResult) -> Bool {
+    46	        selectedParticipantIDs.contains(result.id)
+    47	    }
+    48	
+    49	    func removeParticipant(withID id: String) {
+    50	        guard selectedParticipantIDs.contains(id) else { return }
+    51	        selectedParticipantIDs.remove(id)
+    52	        selectedParticipants.removeAll { $0.id == id }
+    53	    }
+    54	
+    55	    func searchUsersImmediately() {
+    56	        searchTask?.cancel()
+    57	        searchTask = Task { [weak self] in
+    58	            await self?.executeSearch()
+    59	        }
+    60	    }
+    61	
+    62	    func presentError(_ message: String) {
+    63	        errorMessage = message
+    64	    }
+    65	
+    66	    func clearError() {
+    67	        errorMessage = nil
+    68	    }
+    69	
+    70	    @discardableResult
+    71	    func createGroupConversation() async -> String? {
+    72	        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+    73	        guard !trimmedName.isEmpty else {
+    74	            errorMessage = "Group needs a name."
+    75	            return nil
+    76	        }
+    77	
+    78	        guard selectedParticipants.count >= 2 else {
+    79	            errorMessage = "Add at least two people so the group isn’t empty."
+    80	            return nil
+    81	        }
+    82	
+    83	        isSaving = true
+    84	        errorMessage = nil
+    85	
+    86	        do {
+    87	            let conversationID = UUID().uuidString
+    88	            var avatarURL: URL?
+    89	
+    90	            if let image = groupAvatarImage,
+    91	               let data = image.jpegData(compressionQuality: 0.7) {
+    92	                avatarURL = try await services.groupAvatarService.uploadGroupAvatar(
+    93	                    data: data,
+    94	                    conversationID: conversationID
+    95	                )
+    96	            }
+    97	
+    98	            var participants = selectedParticipants.map { $0.id }
+    99	            participants.append(services.currentUserID)
+   100	
+   101	            let conversation = Conversation(
+   102	                id: conversationID,
+   103	                participants: participants,
+   104	                type: .group,
+   105	                title: trimmedName,
+   106	                avatarURL: avatarURL,
+   107	                lastMessage: nil,
+   108	                lastMessageTime: nil,
+   109	                unreadCount: [:],
+   110	                aiCategory: nil,
+   111	                createdAt: Date(),
+   112	                updatedAt: Date()
+   113	            )
+   114	
+   115	            try await services.conversationRepository.upsertConversation(conversation)
+   116	            try services.localDataManager.upsertConversation(
+   117	                LocalConversation(
+   118	                    id: conversation.id,
+   119	                    title: trimmedName,
+   120	                    avatarURL: avatarURL,
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && nl -ba MessageAI/Views/Group/GroupCreationView.swift | sed -n '40,120p'
+```
+
+```
+    40	                        .disabled(viewModel.isSaving)
+    41	                    }
+    42	                }
+    43	        }
+    44	        .task(id: photoItem) {
+    45	            await loadPhoto()
+    46	        }
+    47	        .alert("Oops", isPresented: Binding(
+    48	            get: { viewModel.errorMessage != nil },
+    49	            set: { _ in viewModel.clearError() }
+    50	        )) {
+    51	            Button("OK") { viewModel.clearError() }
+    52	        } message: {
+    53	            Text(viewModel.errorMessage ?? "Unknown error")
+    54	        }
+    55	    }
+    56	
+    57	    private var content: some View {
+    58	        Form {
+    59	            Section("Group Details") {
+    60	                TextField("Group Name", text: $viewModel.groupName)
+    61	
+    62	                PhotosPicker(selection: $photoItem, matching: .images) {
+    63	                    HStack {
+    64	                        if let image = viewModel.groupAvatarImage {
+    65	                            Image(uiImage: image)
+    66	                                .resizable()
+    67	                                .scaledToFill()
+    68	                                .frame(width: 44, height: 44)
+    69	                                .clipShape(Circle())
+    70	                        } else {
+    71	                            ZStack {
+    72	                                Circle()
+    73	                                    .fill(Color(.systemGray5))
+    74	                                    .frame(width: 44, height: 44)
+    75	                                Image(systemName: "photo")
+    76	                                    .foregroundStyle(.secondary)
+    77	                            }
+    78	                        }
+    79	
+    80	                        Text(viewModel.groupAvatarImage == nil ? "Add Photo" : "Change Photo")
+    81	                            .foregroundStyle(.primary)
+    82	                    }
+    83	                }
+    84	            }
+    85	
+    86	            if !viewModel.selectedParticipants.isEmpty {
+    87	                Section("Selected Participants") {
+    88	                    ForEach(viewModel.selectedParticipants) { participant in
+    89	                        HStack {
+    90	                            avatar(for: participant)
+    91	                            VStack(alignment: .leading) {
+    92	                                Text(participant.displayName)
+    93	                                    .font(.body)
+    94	                                if let email = participant.email {
+    95	                                    Text(email)
+    96	                                        .font(.caption)
+    97	                                        .foregroundStyle(.secondary)
+    98	                                }
+    99	                            }
+   100	                            Spacer()
+   101	                            Button {
+   102	                                viewModel.removeParticipant(withID: participant.id)
+   103	                            } label: {
+   104	                                Image(systemName: "xmark.circle.fill")
+   105	                                    .foregroundStyle(.secondary)
+   106	                            }
+   107	                            .buttonStyle(.borderless)
+   108	                        }
+   109	                        .padding(.vertical, 4)
+   110	                    }
+   111	                }
+   112	            }
+   113	
+   114	            Section("Add Participants") {
+   115	                searchField
+   116	
+   117	                if viewModel.isSearching {
+   118	                    HStack {
+   119	                        ProgressView()
+   120	                        Text("Searching…")
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing final summary message**</details></think>
+
+---
+
+Updated the group creation flow to keep error handling internal to the view model:
+
+- Added `presentError`/`clearError` helpers so the view model manages its own alert message state.[^1]
+- Swapped the alert binding and image-loader catch blocks to call those helpers, removing direct writes to the read-only published property.[^2]
+
+You can rebuild or run existing tests as needed—no new issues are expected from this change.
+
+[^1]: ```55:68:MessageAI/ViewModels/GroupCreationViewModel.swift
+    func searchUsersImmediately() {
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            await self?.executeSearch()
+        }
+    }
+
+    func presentError(_ message: String) {
+        errorMessage = message
+    }
+
+    func clearError() {
+        errorMessage = nil
+    }
+```
+
+[^2]: ```40:120:MessageAI/Views/Group/GroupCreationView.swift
+        .alert("Oops", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { _ in viewModel.clearError() }
+        )) {
+            Button("OK") { viewModel.clearError() }
+        } message: {
+            Text(viewModel.errorMessage ?? "Unknown error")
+        }
+    ...
+            await MainActor.run {
+                viewModel.presentError(error.localizedDescription)
+            }
+```
+
+---
+
+_**User (2025-10-22 21:46Z)**_
+
+When searching for users in the group creation view, I get this
+
+12.4.0 - [FirebaseFirestore][I-FST000001] Listen for query at users failed: Missing or insufficient permissions.
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Investigating Firestore permission error**</details></think>
+
+---
+
+Model provided non-existent directory
+
+---
+
+Tool use: **list_dir**
+
+<details>
+            <summary>Listed directory undefined • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/firebase.json
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing Firestore permissions advice**</details></think>
+
+---
+
+That Firestore error means the app isn’t authorized to read from `users`. The query itself is fine; Firestore is rejecting it because your security rules don’t grant read access. Update your Firestore rules so authenticated users can list/search creators while keeping writes locked to each owner—for example:
+
+```
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+```
+
+Push the updated rules from the Firebase console or `firestore.rules`, then redeploy with `firebase deploy --only firestore:rules` (or use the CLI). Once those rules are live, the search in the group creation view will succeed.
 
 ---
 

@@ -26,6 +26,7 @@ public struct CreatorProfile: Codable, Equatable {
 public struct User: Identifiable, Codable, Equatable {
     public var id: String
     public var displayName: String
+    public var displayNameLowercase: String
     public var email: String?
     public var photoURL: URL?
     public var isOnline: Bool
@@ -35,6 +36,7 @@ public struct User: Identifiable, Codable, Equatable {
     public init(
         id: String,
         displayName: String,
+        displayNameLowercase: String? = nil,
         email: String? = nil,
         photoURL: URL? = nil,
         isOnline: Bool = false,
@@ -43,6 +45,7 @@ public struct User: Identifiable, Codable, Equatable {
     ) {
         self.id = id
         self.displayName = displayName
+        self.displayNameLowercase = displayNameLowercase ?? displayName.lowercased()
         self.email = email
         self.photoURL = photoURL
         self.isOnline = isOnline
@@ -57,6 +60,7 @@ extension User {
     enum CodingKeys: String, CodingKey {
         case id
         case displayName
+        case displayNameLowercase
         case email
         case photoURL
         case isOnline
@@ -92,9 +96,12 @@ extension User {
             creatorProfile = CreatorProfile(data: profileData)
         }
 
+        let displayNameLowercase = data["displayName_lowercase"] as? String ?? displayName.lowercased()
+
         self.init(
             id: documentID,
             displayName: displayName,
+            displayNameLowercase: displayNameLowercase,
             email: email,
             photoURL: photoURL,
             isOnline: isOnline,
@@ -106,6 +113,7 @@ extension User {
     public func firestoreData() -> [String: Any] {
         var data: [String: Any] = [
             "displayName": displayName,
+            "displayName_lowercase": displayNameLowercase,
             "isOnline": isOnline
         ]
 

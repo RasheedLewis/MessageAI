@@ -26,8 +26,11 @@ struct ConversationListView: View {
                 }
             }
             .sheet(isPresented: $isPresentingNewConversation) {
-                Text("New conversation flow coming soon")
-                    .presentationDetents([.medium])
+                GroupCreationView(services: viewModel.services) { conversationID in
+                    viewModel.refresh()
+                    isPresentingNewConversation = false
+                }
+                .presentationDetents([.medium, .large])
             }
         }
         .onAppear { viewModel.onAppear() }

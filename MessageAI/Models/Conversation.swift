@@ -11,6 +11,7 @@ public struct Conversation: Identifiable, Codable, Equatable {
     public var participants: [String]
     public var type: ConversationType
     public var title: String?
+    public var avatarURL: URL?
     public var lastMessage: Message?
     public var lastMessageTime: Date?
     public var unreadCount: [String: Int]
@@ -23,6 +24,7 @@ public struct Conversation: Identifiable, Codable, Equatable {
         participants: [String],
         type: ConversationType,
         title: String? = nil,
+        avatarURL: URL? = nil,
         lastMessage: Message? = nil,
         lastMessageTime: Date? = nil,
         unreadCount: [String: Int] = [:],
@@ -34,6 +36,7 @@ public struct Conversation: Identifiable, Codable, Equatable {
         self.participants = participants
         self.type = type
         self.title = title
+        self.avatarURL = avatarURL
         self.lastMessage = lastMessage
         self.lastMessageTime = lastMessageTime
         self.unreadCount = unreadCount
@@ -51,6 +54,7 @@ extension Conversation {
         case participants
         case type
         case title
+        case avatarURL
         case lastMessage
         case lastMessageTime
         case unreadCount
@@ -69,6 +73,13 @@ extension Conversation {
         }
 
         let title = data["title"] as? String
+
+        let avatarURL: URL?
+        if let avatarURLString = data["avatarURL"] as? String {
+            avatarURL = URL(string: avatarURLString)
+        } else {
+            avatarURL = nil
+        }
 
         var lastMessage: Message?
         if let lastMessageData = data["lastMessage"] as? [String: Any] {
@@ -117,6 +128,7 @@ extension Conversation {
             participants: participantIDs,
             type: type,
             title: title,
+            avatarURL: avatarURL,
             lastMessage: lastMessage,
             lastMessageTime: lastMessageTime,
             unreadCount: unreadCount,
@@ -135,6 +147,10 @@ extension Conversation {
 
         if let title {
             data["title"] = title
+        }
+
+        if let avatarURL {
+            data["avatarURL"] = avatarURL.absoluteString
         }
 
         if let lastMessage {

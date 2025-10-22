@@ -18,6 +18,7 @@ enum LocalMessageCategory: String, Codable, CaseIterable {
 final class LocalConversation {
     @Attribute(.unique) var id: String
     var title: String
+    var avatarURL: URL?
     var type: LocalConversationType
     var participantIDs: [String]
 
@@ -28,10 +29,13 @@ final class LocalConversation {
     var lastSyncedAt: Date?
     var pendingUploadCount: Int
     var pendingDownloadCount: Int
+    var createdAt: Date?
+    var updatedAt: Date?
 
     init(
         id: String,
         title: String,
+        avatarURL: URL? = nil,
         type: LocalConversationType,
         participantIDs: [String] = [],
         lastMessageTimestamp: Date? = nil,
@@ -40,10 +44,13 @@ final class LocalConversation {
         aiCategory: LocalMessageCategory? = nil,
         lastSyncedAt: Date? = nil,
         pendingUploadCount: Int = 0,
-        pendingDownloadCount: Int = 0
+        pendingDownloadCount: Int = 0,
+        createdAt: Date? = nil,
+        updatedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
+        self.avatarURL = avatarURL
         self.type = type
         self.participantIDs = participantIDs
         self.lastMessageTimestamp = lastMessageTimestamp
@@ -53,6 +60,8 @@ final class LocalConversation {
         self.lastSyncedAt = lastSyncedAt
         self.pendingUploadCount = pendingUploadCount
         self.pendingDownloadCount = pendingDownloadCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }
 

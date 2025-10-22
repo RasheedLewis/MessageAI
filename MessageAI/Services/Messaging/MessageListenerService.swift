@@ -219,13 +219,16 @@ final class MessageListenerService: MessageListenerServiceProtocol {
         LocalConversation(
             id: conversation.id,
             title: conversation.title ?? "Conversation",
+            avatarURL: conversation.avatarURL,
             type: LocalConversationType(rawValue: conversation.type.rawValue) ?? .oneOnOne,
             participantIDs: conversation.participants,
             lastMessageTimestamp: conversation.lastMessageTime,
             lastMessagePreview: makeLastMessagePreview(conversation.lastMessage),
             unreadCounts: conversation.unreadCount,
             aiCategory: conversation.aiCategory.flatMap { LocalMessageCategory(rawValue: $0.rawValue) },
-            lastSyncedAt: clock()
+            lastSyncedAt: clock(),
+            createdAt: conversation.createdAt,
+            updatedAt: conversation.updatedAt
         )
     }
 
