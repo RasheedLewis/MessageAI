@@ -19,6 +19,7 @@ final class LocalConversation {
     @Attribute(.unique) var id: String
     var title: String
     var type: LocalConversationType
+    var participantIDs: [String]
 
     var lastMessageTimestamp: Date?
     var lastMessagePreview: String?
@@ -32,6 +33,7 @@ final class LocalConversation {
         id: String,
         title: String,
         type: LocalConversationType,
+        participantIDs: [String] = [],
         lastMessageTimestamp: Date? = nil,
         lastMessagePreview: String? = nil,
         unreadCounts: [String: Int] = [:],
@@ -43,6 +45,7 @@ final class LocalConversation {
         self.id = id
         self.title = title
         self.type = type
+        self.participantIDs = participantIDs
         self.lastMessageTimestamp = lastMessageTimestamp
         self.lastMessagePreview = lastMessagePreview
         self.unreadCounts = unreadCounts
