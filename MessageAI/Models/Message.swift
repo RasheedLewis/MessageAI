@@ -39,6 +39,7 @@ public struct Message: Identifiable, Codable, Equatable {
 
 extension Message {
     enum CodingKeys: String, CodingKey {
+        case id
         case conversationId
         case senderId
         case content

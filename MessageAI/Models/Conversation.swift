@@ -47,6 +47,7 @@ public struct Conversation: Identifiable, Codable, Equatable {
 
 extension Conversation {
     enum CodingKeys: String, CodingKey {
+        case id
         case participants
         case type
         case title

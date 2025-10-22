@@ -1,7 +1,8 @@
 import FirebaseFirestore
 import Foundation
 
-public protocol MessageListenerServiceProtocol: AnyObject {
+protocol MessageListenerServiceProtocol: AnyObject {
+    var conversationUpdateHandler: (() -> Void)? { get set }
     func startConversationListener(
         for userID: String,
         onError: ((Error) -> Void)?
@@ -20,7 +21,9 @@ public protocol MessageListenerServiceProtocol: AnyObject {
     func stopAllMessageListeners()
 }
 
-public final class MessageListenerService: MessageListenerServiceProtocol {
+final class MessageListenerService: MessageListenerServiceProtocol {
+    var conversationUpdateHandler: (() -> Void)?
+
     private enum FirestoreKey {
         static let conversationsCollection = "conversations"
         static let messagesCollection = "messages"
@@ -36,7 +39,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
     private var conversationListener: ListenerRegistration?
     private var messageListeners: [String: ListenerRegistration] = [:]
 
-    public init(
+    init(
         localDataManager: LocalDataManager,
         db: Firestore = Firestore.firestore(),
         clock: @escaping () -> Date = Date.init
@@ -53,7 +56,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
 
     // MARK: - Conversation Listener
 
-    public func startConversationListener(
+    func startConversationListener(
         for userID: String,
         onError: ((Error) -> Void)? = nil
     ) {
@@ -63,7 +66,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
             .whereField(FirestoreKey.participants, arrayContains: userID)
             .order(by: FirestoreKey.lastMessageTime, descending: true)
 
-        conversationListener = query.addSnapshotListener(queue: .main) { [weak self] snapshot, error in
+        conversationListener = query.addSnapshotListener { [weak self] snapshot, error in
             guard let self else { return }
 
             if let error {
@@ -93,14 +96,14 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
         }
     }
 
-    public func stopConversationListener() {
+    func stopConversationListener() {
         conversationListener?.remove()
         conversationListener = nil
     }
 
     // MARK: - Messages Listener
 
-    public func startMessagesListener(
+    func startMessagesListener(
         for conversationID: String,
         currentUserID: String,
         onError: ((Error) -> Void)? = nil
@@ -112,7 +115,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
             .collection(FirestoreKey.messagesCollection)
             .order(by: FirestoreKey.timestamp)
 
-        let registration = query.addSnapshotListener(queue: .main) { [weak self] snapshot, error in
+        let registration = query.addSnapshotListener { [weak self] snapshot, error in
             guard let self else { return }
 
             if let error {
@@ -148,12 +151,12 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
         messageListeners[conversationID] = registration
     }
 
-    public func stopMessagesListener(for conversationID: String) {
+    func stopMessagesListener(for conversationID: String) {
         messageListeners[conversationID]?.remove()
         messageListeners.removeValue(forKey: conversationID)
     }
 
-    public func stopAllMessageListeners() {
+    func stopAllMessageListeners() {
         messageListeners.values.forEach { $0.remove() }
         messageListeners.removeAll()
     }
@@ -185,6 +188,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to upsert local conversation: \(error)")
             #endif
         }
+        conversationUpdateHandler?()
     }
 
     private func handleConversationRemoval(conversationID: String) {
@@ -197,6 +201,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to delete local conversation: \(error)")
             #endif
         }
+        conversationUpdateHandler?()
     }
 
     private func makeLocalConversation(from conversation: Conversation) -> LocalConversation {
@@ -253,6 +258,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to upsert local message: \(error)")
             #endif
         }
+        conversationUpdateHandler?()
     }
 
     private func handleMessageRemoval(messageID: String) {
@@ -263,6 +269,7 @@ public final class MessageListenerService: MessageListenerServiceProtocol {
             print("[MessageListenerService] Failed to delete local message: \(error)")
             #endif
         }
+        conversationUpdateHandler?()
     }
 
     private func makeLocalMessage(

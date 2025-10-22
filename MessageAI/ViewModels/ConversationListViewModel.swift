@@ -1,0 +1,122 @@
+import Combine
+import Foundation
+
+@MainActor
+final class ConversationListViewModel: ObservableObject {
+    struct ConversationItem: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let lastMessagePreview: String?
+        let lastMessageTime: Date?
+        let unreadCount: Int
+        let isOnline: Bool
+        let aiCategory: MessageCategory?
+        let participantIDs: [String]
+    }
+
+    enum LoadingState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed(String)
+
+        static func == (lhs: LoadingState, rhs: LoadingState) -> Bool {
+            switch (lhs, rhs) {
+            case (.idle, .idle), (.loading, .loading), (.loaded, .loaded):
+                return true
+            case let (.failed(lhsError), .failed(rhsError)):
+                return lhsError == rhsError
+            default:
+                return false
+            }
+        }
+    }
+
+    @Published private(set) var conversations: [ConversationItem] = []
+    @Published private(set) var loadingState: LoadingState = .idle
+    @Published var selectedFilter: MessageCategory? = nil {
+        didSet { applyFilter() }
+    }
+
+    private var localDataManager: LocalDataManager { services.localDataManager }
+    private var listenerService: MessageListenerServiceProtocol { services.messageListenerService }
+    private var currentUserID: String { services.currentUserID }
+
+    private let services: ServiceResolver
+
+    init(services: ServiceResolver) {
+        self.services = services
+        self.services.messageListenerService.conversationUpdateHandler = { [weak self] in
+            self?.refresh()
+        }
+    }
+
+    private var allConversations: [ConversationItem] = []
+
+    func onAppear() {
+        guard loadingState == .idle else { return }
+        loadingState = .loading
+        fetchLocalConversations()
+        listenerService.startConversationListener(for: currentUserID) { [weak self] error in
+            Task { @MainActor in
+                self?.loadingState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func onDisappear() {
+        listenerService.stopConversationListener()
+        listenerService.stopAllMessageListeners()
+    }
+
+    func refresh() {
+        fetchLocalConversations()
+    }
+
+    private func fetchLocalConversations() {
+        do {
+            let localConversations = try localDataManager.fetchConversations()
+            let items = localConversations.map { local -> ConversationItem in
+                let unreadCount = local.unreadCounts[currentUserID] ?? 0
+                return ConversationItem(
+                    id: local.id,
+                    title: local.title,
+                    lastMessagePreview: local.lastMessagePreview,
+                    lastMessageTime: local.lastMessageTimestamp,
+                    unreadCount: unreadCount,
+                    isOnline: false,
+                    aiCategory: local.aiCategory.flatMap { MessageCategory(rawValue: $0.rawValue) },
+                    participantIDs: local.participantIDs
+                )
+            }
+            self.allConversations = items.sorted(by: compareConversations)
+            applyFilter()
+            loadingState = .loaded
+        } catch {
+            loadingState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func applyFilter() {
+        if let selectedFilter {
+            conversations = allConversations.filter { $0.aiCategory == selectedFilter }
+        } else {
+            conversations = allConversations
+        }
+    }
+
+    private func compareConversations(_ lhs: ConversationItem, _ rhs: ConversationItem) -> Bool {
+        switch (lhs.lastMessageTime, rhs.lastMessageTime) {
+        case let (lhs?, rhs?):
+            if lhs != rhs { return lhs > rhs }
+        case (let lhs?, nil):
+            return true
+        case (nil, let rhs?):
+            return false
+        case (nil, nil):
+            break
+        }
+        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+}
+

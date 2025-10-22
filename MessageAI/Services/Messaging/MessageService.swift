@@ -25,7 +25,7 @@ public enum MessageServiceError: LocalizedError {
     }
 }
 
-public protocol MessageServiceProtocol {
+protocol MessageServiceProtocol {
     func sendTextMessage(
         _ content: String,
         conversationID: String,
@@ -46,7 +46,7 @@ public protocol MessageServiceProtocol {
     ) async -> Result<Message, MessageServiceError>
 }
 
-public final class MessageService: MessageServiceProtocol {
+final class MessageService: MessageServiceProtocol {
     private struct Dependencies {
         let localDataManager: LocalDataManager
         let conversationRepository: ConversationRepositoryProtocol
@@ -57,13 +57,13 @@ public final class MessageService: MessageServiceProtocol {
 
     private let dependencies: Dependencies
 
-    public init(
-        localDataManager: LocalDataManager,
-        conversationRepository: ConversationRepositoryProtocol = ConversationRepository(),
-        messageRepository: MessageRepositoryProtocol = MessageRepository(),
-        idGenerator: @escaping () -> String = { UUID().uuidString },
-        clock: @escaping () -> Date = Date.init
-    ) {
+init(
+    localDataManager: LocalDataManager,
+    conversationRepository: ConversationRepositoryProtocol,
+    messageRepository: MessageRepositoryProtocol,
+    idGenerator: @escaping () -> String = { UUID().uuidString },
+    clock: @escaping () -> Date = Date.init
+) {
         dependencies = Dependencies(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,

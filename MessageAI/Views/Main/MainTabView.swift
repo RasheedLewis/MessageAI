@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    let services: ServiceResolver
     @State private var selectedTab: Tab = .conversations
 
     enum Tab: Hashable {
@@ -11,7 +12,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ConversationsPlaceholderView()
+            ConversationListView(services: services)
                 .tabItem {
                     Label("Messages", systemImage: "bubble.left.and.bubble.right.fill")
                 }
@@ -28,23 +29,6 @@ struct MainTabView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
                 .tag(Tab.settings)
-        }
-    }
-}
-
-private struct ConversationsPlaceholderView: View {
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Text("Conversation list coming soon")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                Button("New Conversation") {}
-                    .buttonStyle(.borderedProminent)
-                    .disabled(true)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemGroupedBackground))
         }
     }
 }
@@ -84,6 +68,6 @@ private struct SettingsPlaceholderView: View {
 }
 
 #Preview {
-    MainTabView()
+    MainTabView(services: ServiceResolver.previewResolver)
 }
 
