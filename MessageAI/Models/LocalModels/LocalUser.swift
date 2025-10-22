@@ -10,6 +10,7 @@ final class LocalUser {
     var isOnline: Bool
     var lastSeen: Date?
     var isCurrentUser: Bool
+    var lastSyncedAt: Date?
 
     @Relationship(deleteRule: .nullify, inverse: \LocalConversation.participants)
     var conversations: [LocalConversation] = []
@@ -24,7 +25,8 @@ final class LocalUser {
         photoURL: URL? = nil,
         isOnline: Bool = false,
         lastSeen: Date? = nil,
-        isCurrentUser: Bool = false
+        isCurrentUser: Bool = false,
+        lastSyncedAt: Date? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -33,6 +35,7 @@ final class LocalUser {
         self.isOnline = isOnline
         self.lastSeen = lastSeen
         self.isCurrentUser = isCurrentUser
+        self.lastSyncedAt = lastSyncedAt
     }
 }
 

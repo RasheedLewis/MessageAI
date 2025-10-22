@@ -734,7 +734,2100 @@ Continue with implementing 2. **Local Data Manager**
 
 _**Assistant (gpt-5-codex)**_
 
+<think><details><summary>Thought Process</summary>**Designing LocalDataManager class with SwiftData for CRUD**
 
+I'm planning a `LocalDataManager` Swift class using SwiftData to handle CRUD operations for conversations and messages. I'll set up a `ModelContainer` with persistent models, define async methods to fetch, save, update, and delete data, and carefully manage context and errors to align with iOS 17's data model features. This will include a shared singleton instance, error handling, and support for both in-memory and persistent stores.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: MessageAI/Services/Database/LocalDataManager.swift
++import Foundation
++import SwiftData
++
++enum LocalDataManagerError: Error, CustomStringConvertible {
++    case conversationNotFound(String)
++    case messageNotFound(String)
++
++    var description: String {
++        switch self {
++        case let .conversationNotFound(id):
++            return "Conversation not found for id: \(id)"
++        case let .messageNotFound(id):
++            return "Message not found for id: \(id)"
++        }
++    }
++}
++
++@MainActor
++final class LocalDataManager {
++    static let shared: LocalDataManager = {
++        do {
++            return try LocalDataManager()
++        } catch {
++            fatalError("Failed to initialize LocalDataManager: \(error)")
++        }
++    }()
++
++    let container: ModelContainer
++    let context: ModelContext
++
++    init(container: ModelContainer) {
++        self.container = container
++        self.context = container.mainContext
++    }
++
++    init(inMemory: Bool = false) throws {
++        let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
++        let container = try ModelContainer(
++            for: LocalUser.self,
++            LocalConversation.self,
++            LocalMessage.self,
++            configurations: configuration
++        )
++        self.container = container
++        self.context = container.mainContext
++    }
++
++    // MARK: - Conversations
++
++    func upsertConversation(_ conversation: LocalConversation) throws {
++        if conversation.modelContext == nil {
++            context.insert(conversation)
++        }
++        try context.save()
++    }
++
++    func upsertConversation(
++        id: String,
++        createDefault: @autoclosure () -> LocalConversation,
++        updates: (LocalConversation) -> Void
++    ) throws {
++        let existing = try conversation(withID: id)
++        if let conversation = existing {
++            updates(conversation)
++        } else {
++            let conversation = createDefault()
++            updates(conversation)
++            context.insert(conversation)
++        }
++        try context.save()
++    }
++
++    func conversation(withID id: String) throws -> LocalConversation? {
++        let descriptor = FetchDescriptor<LocalConversation>(
++            predicate: #Predicate { conversation in
++                conversation.id == id
++            },
++            fetchLimit: 1
++        )
++        return try context.fetch(descriptor).first
++    }
++
++    func fetchConversations(limit: Int? = nil) throws -> [LocalConversation] {
++        var descriptor = FetchDescriptor<LocalConversation>(
++            sortBy: [
++                SortDescriptor(
++                    \LocalConversation.lastMessageTimestamp,
++                    order: .reverse
++                ),
++                SortDescriptor(\LocalConversation.title)
++            ]
++        )
++
++        if let limit {
++            descriptor.fetchLimit = limit
++        }
++
++        return try context.fetch(descriptor)
++    }
++
++    func deleteConversation(_ conversation: LocalConversation) throws {
++        if let existing = try conversation(withID: conversation.id) {
++            context.delete(existing)
++            try context.save()
++        }
++    }
++
++    // MARK: - Messages
++
++    func addMessage(_ message: LocalMessage, toConversationID conversationID: String) throws {
++        guard let conversation = try conversation(withID: conversationID) else {
++            throw LocalDataManagerError.conversationNotFound(conversationID)
++        }
++
++        if message.modelContext == nil {
++            conversation.messages.append(message)
++            message.conversation = conversation
++            context.insert(message)
++        }
++
++        try context.save()
++    }
++
++    func upsertMessage(
++        id: String,
++        createDefault: @autoclosure () -> LocalMessage,
++        updates: (LocalMessage) -> Void
++    ) throws {
++        let descriptor = FetchDescriptor<LocalMessage>(
++            predicate: #Predicate { $0.id == id },
++            fetchLimit: 1
++        )
++
++        if let existing = try context.fetch(descriptor).first {
++            updates(existing)
++        } else {
++            let message = createDefault()
++            updates(message)
++            context.insert(message)
++        }
++
++        try context.save()
++    }
++
++    func fetchMessages(
++        forConversationID conversationID: String,
++        limit: Int? = nil
++    ) throws -> [LocalMessage] {
++        var descriptor = FetchDescriptor<LocalMessage>(
++            predicate: #Predicate { message in
++                message.conversationID == conversationID
++            },
++            sortBy: [
++                SortDescriptor(\LocalMessage.timestamp)
++            ]
++        )
++
++        if let limit {
++            descriptor.fetchLimit = limit
++        }
++
++        return try context.fetch(descriptor)
++    }
++
++    func message(withID id: String) throws -> LocalMessage {
++        let descriptor = FetchDescriptor<LocalMessage>(
++            predicate: #Predicate { $0.id == id },
++            fetchLimit: 1
++        )
++
++        guard let message = try context.fetch(descriptor).first else {
++            throw LocalDataManagerError.messageNotFound(id)
++        }
++
++        return message
++    }
++
++    func updateMessageStatus(
++        messageID: String,
++        status: LocalMessageStatus
++    ) throws {
++        let message = try message(withID: messageID)
++        message.status = status
++        try context.save()
++    }
++
++    func deleteMessage(withID id: String) throws {
++        let message = try message(withID: id)
++        context.delete(message)
++        try context.save()
++    }
++
++    // MARK: - Utilities
++
++    func saveIfNeeded() throws {
++        if context.hasChanges {
++            try context.save()
++        }
++    }
++
++    func resetStore() throws {
++        try container.deleteAllData()
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Ensuring message and conversation consistency**
+
+I’m working through how messages and conversations link, focusing on avoiding duplicates and managing the conversation’s message list properly. I’m considering adding parameters to upsert methods to maintain conversation ties and thinking about implementing user CRUD operations alongside messages and conversations. Next, I’ll suggest testing and possibly expanding user handling to keep everything aligned and cohesive.</details></think>
+
+---
+
+- Added `LocalDataManager` to wrap a shared SwiftData `ModelContainer`, exposing insert/update/fetch/delete helpers for `LocalConversation` and `LocalMessage`, plus convenience for status updates and store resets.
+- Implemented guardrails (`LocalDataManagerError`) so callers know when a referenced conversation or message is missing, and provided in-memory initialization for testing.
+
+```18:204:MessageAI/Services/Database/LocalDataManager.swift
+@MainActor
+final class LocalDataManager {
+    static let shared: LocalDataManager = { ... }()
+    let container: ModelContainer
+    let context: ModelContext
+    // CRUD helpers for conversations and messages
+}
+```
+
+Next steps: wire this manager into upcoming sync logic (`LocalDataManager` usage in repositories), add user-related helpers if needed, and cover the new paths with unit tests once we tackle subtask 4.
+
+---
+
+_**User (2025-10-21 15:46Z)**_
+
+Work on 3. **Sync Status**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Extending SwiftData models for sync tracking**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalUser.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalUser.swift
+@@
+     var email: String?
+     var photoURL: URL?
+     var isOnline: Bool
+     var lastSeen: Date?
+     var isCurrentUser: Bool
++    var lastSyncedAt: Date?
+ 
+     @Relationship(deleteRule: .nullify, inverse: \LocalConversation.participants)
+     var conversations: [LocalConversation] = []
+ 
+     @Relationship(deleteRule: .nullify, inverse: \LocalMessage.sender)
+@@
+         email: String? = nil,
+         photoURL: URL? = nil,
+         isOnline: Bool = false,
+         lastSeen: Date? = nil,
+-        isCurrentUser: Bool = false
++        isCurrentUser: Bool = false,
++        lastSyncedAt: Date? = nil
+     ) {
+         self.id = id
+         self.displayName = displayName
+         self.email = email
+         self.photoURL = photoURL
+         self.isOnline = isOnline
+         self.lastSeen = lastSeen
+         self.isCurrentUser = isCurrentUser
++        self.lastSyncedAt = lastSyncedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalConversation.swift
+@@
+     var unreadCounts: [String: Int]
+     var aiCategory: LocalMessageCategory?
++    var lastSyncedAt: Date?
+ 
+     @Relationship(deleteRule: .cascade, inverse: \LocalMessage.conversation)
+     var messages: [LocalMessage] = []
+@@
+         type: LocalConversationType,
+         lastMessageTimestamp: Date? = nil,
+         lastMessagePreview: String? = nil,
+-        unreadCounts: [String: Int] = [:],
+-        aiCategory: LocalMessageCategory? = nil
++        unreadCounts: [String: Int] = [:],
++        aiCategory: LocalMessageCategory? = nil,
++        lastSyncedAt: Date? = nil
+     ) {
+         self.id = id
+         self.title = title
+         self.type = type
+         self.lastMessageTimestamp = lastMessageTimestamp
+         self.lastMessagePreview = lastMessagePreview
+         self.unreadCounts = unreadCounts
+         self.aiCategory = aiCategory
++        self.lastSyncedAt = lastSyncedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalMessage.swift
+@@
+     var collaborationScore: Double?
+     var metadata: [String: String]
++    var syncStatus: LocalSyncStatus
++    var lastSyncedAt: Date?
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalMessage.swift
+@@
+ enum LocalMessageStatus: String, Codable, CaseIterable {
+     case sending
+     case sent
+     case delivered
+     case read
+     case failed
+ }
+ 
++enum LocalSyncStatus: String, Codable, CaseIterable {
++    case pending
++    case syncing
++    case synced
++    case failed
++}
++
+ @Model
+ final class LocalMessage {
+@@
+-        metadata: [String: String] = [:]
++        metadata: [String: String] = [:],
++        syncStatus: LocalSyncStatus = .pending,
++        lastSyncedAt: Date? = nil
+     ) {
+         self.id = id
+         self.conversationID = conversationID
+         self.senderID = senderID
+         self.content = content
+         self.mediaURL = mediaURL
+         self.timestamp = timestamp
+         self.status = status
+         self.readBy = readBy
+         self.aiCategory = aiCategory
+         self.sentiment = sentiment
+         self.priority = priority
+         self.collaborationScore = collaborationScore
+         self.metadata = metadata
++        self.syncStatus = syncStatus
++        self.lastSyncedAt = lastSyncedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func upsertConversation(_ conversation: LocalConversation) throws {
+         if conversation.modelContext == nil {
+             context.insert(conversation)
+         }
+         try context.save()
+@@
+     func upsertConversation(
+         id: String,
+         createDefault: @autoclosure () -> LocalConversation,
+         updates: (LocalConversation) -> Void
+     ) throws {
+@@
+-            updates(conversation)
++            updates(conversation)
++            conversation.lastSyncedAt = Date()
+         } else {
+             let conversation = createDefault()
+             updates(conversation)
++            conversation.lastSyncedAt = Date()
+             context.insert(conversation)
+         }
+         try context.save()
+     }
+@@
+         if let existing = try conversation(withID: conversation.id) {
+             context.delete(existing)
+             try context.save()
+         }
+     }
+@@
+     func addMessage(_ message: LocalMessage, toConversationID conversationID: String) throws {
+         guard let conversation = try conversation(withID: conversationID) else {
+             throw LocalDataManagerError.conversationNotFound(conversationID)
+         }
+ 
+@@
+-        }
+-
++        }
++
++        message.syncStatus = .pending
+         try context.save()
+     }
+ 
+     func upsertMessage(
+         id: String,
+@@
+-        if let existing = try context.fetch(descriptor).first {
+-            updates(existing)
++        if let existing = try context.fetch(descriptor).first {
++            updates(existing)
++            existing.lastSyncedAt = Date()
+         } else {
+             let message = createDefault()
+             updates(message)
++            message.lastSyncedAt = Date()
+             context.insert(message)
+         }
+ 
+         try context.save()
+     }
+@@
+     func updateMessageStatus(
+         messageID: String,
+         status: LocalMessageStatus
+     ) throws {
+         let message = try message(withID: messageID)
+         message.status = status
+         try context.save()
+     }
++
++    func updateMessageSyncStatus(
++        messageID: String,
++        status: LocalSyncStatus,
++        syncedAt: Date? = Date()
++    ) throws {
++        let message = try message(withID: messageID)
++        message.syncStatus = status
++        message.lastSyncedAt = syncedAt
++        try context.save()
++    }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        if let existing = try context.fetch(descriptor).first {
+-            updates(existing)
+-            existing.lastSyncedAt = Date()
+-        } else {
+-            let message = createDefault()
+-            updates(message)
+-            message.lastSyncedAt = Date()
+-            context.insert(message)
+-        }
+-
+-        try context.save()
++        if let existing = try context.fetch(descriptor).first {
++            updates(existing)
++        } else {
++            let message = createDefault()
++            updates(message)
++            context.insert(message)
++        }
++
++        try context.save()
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Expanding sync status and queue management**
+
+I'm mapping out how to add detailed sync tracking to messages and conversations, including statuses like pending, syncing, and synced, plus sync directions and attempt counts. I plan to enhance `LocalMessage` and `LocalConversation` models with new fields, update their initializers, and build methods in `LocalDataManager` to manage a pending message queue and sync state updates. This should support tracking upload/download flows and retry attempts clearly.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalMessage.swift
+@@
+ enum LocalMessageStatus: String, Codable, CaseIterable {
+     case sending
+     case sent
+     case delivered
+     case read
+     case failed
+ }
+ 
+ enum LocalSyncStatus: String, Codable, CaseIterable {
+     case pending
+     case syncing
+     case synced
+     case failed
+ }
++
++enum LocalSyncDirection: String, Codable, CaseIterable {
++    case upload
++    case download
++}
+ 
+ @Model
+ final class LocalMessage {
+@@
+     var sentiment: String?
+     var priority: Int?
+     var collaborationScore: Double?
+     var metadata: [String: String]
+     var syncStatus: LocalSyncStatus
++    var syncDirection: LocalSyncDirection
++    var syncAttemptCount: Int
+     var lastSyncedAt: Date?
+ 
+     var conversation: LocalConversation?
+ 
+     var sender: LocalUser?
+@@
+         status: LocalMessageStatus = .sending,
+         readBy: [String: Date] = [:],
+         aiCategory: LocalMessageCategory? = nil,
+         sentiment: String? = nil,
+         priority: Int? = nil,
+         collaborationScore: Double? = nil,
+-        metadata: [String: String] = [:],
+-        syncStatus: LocalSyncStatus = .pending,
++        metadata: [String: String] = [:],
++        syncStatus: LocalSyncStatus = .pending,
++        syncDirection: LocalSyncDirection = .upload,
++        syncAttemptCount: Int = 0,
+         lastSyncedAt: Date? = nil
+     ) {
+         self.id = id
+         self.conversationID = conversationID
+         self.senderID = senderID
+@@
+         self.sentiment = sentiment
+         self.priority = priority
+         self.collaborationScore = collaborationScore
+         self.metadata = metadata
+         self.syncStatus = syncStatus
++        self.syncDirection = syncDirection
++        self.syncAttemptCount = syncAttemptCount
+         self.lastSyncedAt = lastSyncedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func addMessage(_ message: LocalMessage, toConversationID conversationID: String) throws {
+         guard let conversation = try conversation(withID: conversationID) else {
+             throw LocalDataManagerError.conversationNotFound(conversationID)
+         }
+ 
+         if message.modelContext == nil {
+             conversation.messages.append(message)
+             message.conversation = conversation
+             context.insert(message)
+         }
+ 
+-        message.syncStatus = .pending
++        message.syncStatus = .pending
++        message.syncAttemptCount = 0
+         try context.save()
+     }
+@@
+     func updateMessageSyncStatus(
+         messageID: String,
+         status: LocalSyncStatus,
+-        syncedAt: Date? = Date()
++        direction: LocalSyncDirection,
++        syncedAt: Date? = Date()
+     ) throws {
+         let message = try message(withID: messageID)
+         message.syncStatus = status
++        message.syncDirection = direction
+         message.lastSyncedAt = syncedAt
++        if status == .failed {
++            message.syncAttemptCount += 1
++        } else {
++            message.syncAttemptCount = 0
++        }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func upsertConversation(
+         id: String,
+         createDefault: @autoclosure () -> LocalConversation,
+         updates: (LocalConversation) -> Void
+     ) throws {
+@@
+-            updates(conversation)
+-            conversation.lastSyncedAt = Date()
++            updates(conversation)
++            conversation.lastSyncedAt = Date()
+         } else {
+             let conversation = createDefault()
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
+             context.insert(conversation)
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalMessage.swift
+@@
+     var syncStatus: LocalSyncStatus
+     var syncDirection: LocalSyncDirection
+     var syncAttemptCount: Int
+     var lastSyncedAt: Date?
++    var lastModifiedAt: Date
+@@
+-        lastSyncedAt: Date? = nil
++        lastSyncedAt: Date? = nil,
++        lastModifiedAt: Date = Date()
+     ) {
+         self.id = id
+         self.conversationID = conversationID
+         self.senderID = senderID
+         self.content = content
+@@
+         self.syncStatus = syncStatus
+         self.syncDirection = syncDirection
+         self.syncAttemptCount = syncAttemptCount
+         self.lastSyncedAt = lastSyncedAt
++        self.lastModifiedAt = lastModifiedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func upsertConversation(
+         id: String,
+         createDefault: @autoclosure () -> LocalConversation,
+         updates: (LocalConversation) -> Void
+     ) throws {
+@@
+-        }
+-        try context.save()
++        }
++        try context.save()
+     }
+@@
+         try context.save()
+     }
+@@
+-    func fetchMessages(
+-        forConversationID conversationID: String,
+-        limit: Int? = nil
+-    ) throws -> [LocalMessage] {
++    func fetchMessages(
++        forConversationID conversationID: String,
++        limit: Int? = nil,
++        includeFailed: Bool = true
++    ) throws -> [LocalMessage] {
+         var descriptor = FetchDescriptor<LocalMessage>(
+             predicate: #Predicate { message in
+-                message.conversationID == conversationID
++                message.conversationID == conversationID
+             },
+             sortBy: [
+                 SortDescriptor(\LocalMessage.timestamp)
+             ]
+         )
+@@
+-        return try context.fetch(descriptor)
++        var messages = try context.fetch(descriptor)
++
++        if !includeFailed {
++            messages = messages.filter { $0.syncStatus != .failed }
++        }
++
++        return messages
+     }
+@@
+     func updateMessageStatus(
+         messageID: String,
+         status: LocalMessageStatus
+     ) throws {
+         let message = try message(withID: messageID)
+         message.status = status
++        message.lastModifiedAt = Date()
+         try context.save()
+     }
+ 
+     func updateMessageSyncStatus(
+         messageID: String,
+         status: LocalSyncStatus,
+         direction: LocalSyncDirection,
+         syncedAt: Date? = Date()
+     ) throws {
+         let message = try message(withID: messageID)
+         message.syncStatus = status
+         message.syncDirection = direction
+         message.lastSyncedAt = syncedAt
++        if status == .synced {
++            message.lastModifiedAt = syncedAt ?? Date()
++        }
+         if status == .failed {
+             message.syncAttemptCount += 1
+         } else {
+             message.syncAttemptCount = 0
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing sync status tracking in local data models**
+
+I’m planning a comprehensive update to LocalConversation, LocalMessage, and LocalDataManager to track message sync directions, statuses, and counts per conversation. This includes adding pending upload/download counters, last synced and modified timestamps, and helper methods to recalculate and refresh these sync-related fields after each message or conversation update. I’ll also add functions to fetch pending messages and mark sync states, ensuring everything stays consistent across inserts, updates, and deletions. This approach should robustly support offline sync queues and status management throughout the local data layer.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalConversation.swift
+@@
+     var lastMessageTimestamp: Date?
+     var lastMessagePreview: String?
+     var unreadCounts: [String: Int]
+     var aiCategory: LocalMessageCategory?
+     var lastSyncedAt: Date?
++    var lastLocalUpdateAt: Date?
++    var pendingUploadCount: Int
++    var pendingDownloadCount: Int
+ 
+     @Relationship(deleteRule: .cascade, inverse: \LocalMessage.conversation)
+     var messages: [LocalMessage] = []
+@@
+         type: LocalConversationType,
+         lastMessageTimestamp: Date? = nil,
+         lastMessagePreview: String? = nil,
+         unreadCounts: [String: Int] = [:],
+         aiCategory: LocalMessageCategory? = nil,
+-        lastSyncedAt: Date? = nil
++        lastSyncedAt: Date? = nil,
++        lastLocalUpdateAt: Date? = nil,
++        pendingUploadCount: Int = 0,
++        pendingDownloadCount: Int = 0
+     ) {
+         self.id = id
+         self.title = title
+         self.type = type
+         self.lastMessageTimestamp = lastMessageTimestamp
+         self.lastMessagePreview = lastMessagePreview
+         self.unreadCounts = unreadCounts
+         self.aiCategory = aiCategory
+         self.lastSyncedAt = lastSyncedAt
++        self.lastLocalUpdateAt = lastLocalUpdateAt
++        self.pendingUploadCount = pendingUploadCount
++        self.pendingDownloadCount = pendingDownloadCount
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating conversation sync and message handling**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating DataManager for sync tracking**
+**Implementing conversation metadata refresh and pending counts**
+
+I’m expanding conversation updates to keep pending counts and last message summaries accurate by adding helper functions that refresh these on message add, update, upsert, and delete. I’ll carefully patch methods to call these helpers and ensure pending message fetches and sync statuses reflect correctly across conversations. This should maintain consistent sync tracking and conversation metadata throughout.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+         if message.modelContext == nil {
+             conversation.messages.append(message)
+             message.conversation = conversation
+             context.insert(message)
+         }
+ 
+         message.syncStatus = .pending
++        message.syncDirection = .upload
+         message.syncAttemptCount = 0
++        message.lastModifiedAt = Date()
++        conversation.lastLocalUpdateAt = Date()
++        conversation.lastMessageTimestamp = max(conversation.lastMessageTimestamp ?? .distantPast, message.timestamp)
++        conversation.lastMessagePreview = message.content
++        updateConversationSummary(for: conversation)
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-    func fetchMessages(
+-        forConversationID conversationID: String,
+-        limit: Int? = nil,
+-        includeFailed: Bool = true
+-    ) throws -> [LocalMessage] {
+-        var descriptor = FetchDescriptor<LocalMessage>(
+-            predicate: #Predicate { message in
+-                message.conversationID == conversationID
+-            },
+-            sortBy: [
+-                SortDescriptor(\LocalMessage.timestamp)
+-            ]
+-        )
+-
+-        if let limit {
+-            descriptor.fetchLimit = limit
+-        }
+-
+-        var messages = try context.fetch(descriptor)
+-
+-        if !includeFailed {
+-            messages = messages.filter { $0.syncStatus != .failed }
+-        }
+-
+-        return messages
+-    }
++    func fetchMessages(
++        forConversationID conversationID: String,
++        limit: Int? = nil,
++        includeFailed: Bool = true
++    ) throws -> [LocalMessage] {
++        let predicate: Predicate<LocalMessage>
++
++        if includeFailed {
++            predicate = #Predicate { message in
++                message.conversationID == conversationID
++            }
++        } else {
++            predicate = #Predicate { message in
++                message.conversationID == conversationID && message.syncStatus != .failed
++            }
++        }
++
++        var descriptor = FetchDescriptor<LocalMessage>(
++            predicate: predicate,
++            sortBy: [
++                SortDescriptor(\LocalMessage.timestamp)
++            ]
++        )
++
++        if let limit {
++            descriptor.fetchLimit = limit
++        }
++
++        return try context.fetch(descriptor)
++    }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        message.syncStatus = status
+-        message.syncDirection = direction
+-        message.lastSyncedAt = syncedAt
+-        if status == .synced {
+-            message.lastModifiedAt = syncedAt ?? Date()
+-        }
+-        if status == .failed {
+-            message.syncAttemptCount += 1
+-        } else {
+-            message.syncAttemptCount = 0
+-        }
++        message.syncStatus = status
++        message.syncDirection = direction
++        message.lastSyncedAt = syncedAt
++        let effectiveDate = syncedAt ?? Date()
++        if status == .synced {
++            message.lastModifiedAt = effectiveDate
++        }
++
++        switch status {
++        case .failed:
++            message.syncAttemptCount += 1
++        case .pending:
++            message.syncAttemptCount = 0
++        case .syncing:
++            break
++        case .synced:
++            message.syncAttemptCount = 0
++        }
++
++        if let conversation = message.conversation {
++            updateConversationSummary(for: conversation)
++            switch (direction, status) {
++            case (.upload, .pending):
++                conversation.pendingUploadCount += 1
++            case (.upload, .synced):
++                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
++                conversation.lastSyncedAt = effectiveDate
++            case (.upload, .failed):
++                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
++            case (.download, .pending):
++                conversation.pendingDownloadCount += 1
++            case (.download, .synced):
++                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
++                conversation.lastSyncedAt = effectiveDate
++            case (.download, .failed):
++                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
++            case (.upload, .syncing), (.download, .syncing):
++                break
++            }
++        }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        let existing = try conversation(withID: id)
+-        if let conversation = existing {
+-            updates(conversation)
+-            conversation.lastSyncedAt = Date()
+-        } else {
+-            let conversation = createDefault()
+-            updates(conversation)
+-            conversation.lastSyncedAt = Date()
+-            context.insert(conversation)
+-        }
++        if let conversation = try conversation(withID: id) {
++            updates(conversation)
++            conversation.lastSyncedAt = Date()
++            conversation.lastLocalUpdateAt = Date()
++            updateConversationSummary(for: conversation)
++        } else {
++            let conversation = createDefault()
++            updates(conversation)
++            conversation.lastSyncedAt = Date()
++            conversation.lastLocalUpdateAt = Date()
++            updateConversationSummary(for: conversation)
++            context.insert(conversation)
++        }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        conversation.lastLocalUpdateAt = Date()
+-        conversation.lastMessageTimestamp = max(conversation.lastMessageTimestamp ?? .distantPast, message.timestamp)
+-        conversation.lastMessagePreview = message.content
+-        updateConversationSummary(for: conversation)
++        conversation.lastLocalUpdateAt = Date()
++        conversation.lastMessageTimestamp = max(conversation.lastMessageTimestamp ?? .distantPast, message.timestamp)
++        conversation.lastMessagePreview = message.content
++        updateConversationSummary(for: conversation)
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        message.syncStatus = .pending
+-        message.syncDirection = .upload
+-        message.syncAttemptCount = 0
+-        message.lastModifiedAt = Date()
+-        conversation.lastLocalUpdateAt = Date()
+-        conversation.lastMessageTimestamp = max(conversation.lastMessageTimestamp ?? .distantPast, message.timestamp)
+-        conversation.lastMessagePreview = message.content
+-        updateConversationSummary(for: conversation)
++        message.syncStatus = .pending
++        message.syncDirection = .upload
++        message.syncAttemptCount = 0
++        message.lastModifiedAt = Date()
++        conversation.lastLocalUpdateAt = Date()
++        conversation.lastMessageTimestamp = max(conversation.lastMessageTimestamp ?? .distantPast, message.timestamp)
++        conversation.lastMessagePreview = message.content
++        updateConversationSummary(for: conversation)
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func updateMessageSyncStatus(
+         messageID: String,
+         status: LocalSyncStatus,
+         direction: LocalSyncDirection,
+         syncedAt: Date? = Date()
+     ) throws {
+         let message = try message(withID: messageID)
+         message.syncStatus = status
+         message.syncDirection = direction
+         message.lastSyncedAt = syncedAt
+         let effectiveDate = syncedAt ?? Date()
+         if status == .synced {
+             message.lastModifiedAt = effectiveDate
+         }
+ 
+         switch status {
+         case .failed:
+             message.syncAttemptCount += 1
+         case .pending:
+             message.syncAttemptCount = 0
+         case .syncing:
+             break
+         case .synced:
+             message.syncAttemptCount = 0
+         }
+ 
+         if let conversation = message.conversation {
+-            updateConversationSummary(for: conversation)
++            updateConversationSummary(for: conversation)
+             switch (direction, status) {
+             case (.upload, .pending):
+                 conversation.pendingUploadCount += 1
+             case (.upload, .synced):
+                 conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+                 conversation.lastSyncedAt = effectiveDate
+             case (.upload, .failed):
+                 conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+             case (.download, .pending):
+                 conversation.pendingDownloadCount += 1
+             case (.download, .synced):
+                 conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+                 conversation.lastSyncedAt = effectiveDate
+             case (.download, .failed):
+                 conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+             case (.upload, .syncing), (.download, .syncing):
+                 break
+             }
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        if let conversation = message.conversation {
+-            updateConversationSummary(for: conversation)
++        if let conversation = message.conversation {
++            updateConversationSummary(for: conversation)
+             switch (direction, status) {
+             case (.upload, .pending):
+                 conversation.pendingUploadCount += 1
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing conversation summary updates and message sync queue**
+
+I'm building a private helper to recalculate conversation summaries by counting pending upload/download messages and updating last message info to avoid inconsistent state from manual increments. I'll add methods to fetch pending messages by direction, update sync statuses, and ensure conversation summaries are updated after message inserts or updates. This includes refining upsert logic to set modification timestamps and call the summary update, aligning with a pending message queue concept to track message sync progress systematically.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func upsertMessage(
+         id: String,
+         createDefault: @autoclosure () -> LocalMessage,
+         updates: (LocalMessage) -> Void
+     ) throws {
+         let descriptor = FetchDescriptor<LocalMessage>(
+             predicate: #Predicate { $0.id == id },
+             fetchLimit: 1
+         )
+ 
+-        if let existing = try context.fetch(descriptor).first {
+-            updates(existing)
+-        } else {
+-            let message = createDefault()
+-            updates(message)
+-            context.insert(message)
+-        }
+-
++        let target: LocalMessage
++        if let existing = try context.fetch(descriptor).first {
++            updates(existing)
++            target = existing
++        } else {
++            let message = createDefault()
++            updates(message)
++            context.insert(message)
++            target = message
++        }
++
++        target.lastModifiedAt = Date()
++        if let conversation = target.conversation {
++            updateConversationSummary(for: conversation)
++        }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        message.syncStatus = .pending
+-        message.syncDirection = .upload
+-        message.syncAttemptCount = 0
+-        message.lastModifiedAt = Date()
+-        conversation.lastLocalUpdateAt = Date()
+-        conversation.lastMessageTimestamp = max(conversation.lastMessageTimestamp ?? .distantPast, message.timestamp)
+-        conversation.lastMessagePreview = message.content
+-        updateConversationSummary(for: conversation)
++        message.syncStatus = .pending
++        message.syncDirection = .upload
++        message.syncAttemptCount = 0
++        message.lastModifiedAt = Date()
++        if message.status == .sending {
++            message.status = .sent
++        }
++        updateConversationAfterMessageChange(conversation, message: message)
+         try context.save()
+     }
+@@
+-        target.lastModifiedAt = Date()
+-        if let conversation = target.conversation {
+-            updateConversationSummary(for: conversation)
+-        }
++        target.lastModifiedAt = Date()
++        if let conversation = target.conversation {
++            updateConversationAfterMessageChange(conversation, message: target)
++        }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        if let conversation = message.conversation {
+-            updateConversationSummary(for: conversation)
+-            switch (direction, status) {
+-            case (.upload, .pending):
+-                conversation.pendingUploadCount += 1
+-            case (.upload, .synced):
+-                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+-                conversation.lastSyncedAt = effectiveDate
+-            case (.upload, .failed):
+-                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+-            case (.download, .pending):
+-                conversation.pendingDownloadCount += 1
+-            case (.download, .synced):
+-                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+-                conversation.lastSyncedAt = effectiveDate
+-            case (.download, .failed):
+-                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+-            case (.upload, .syncing), (.download, .syncing):
+-                break
+-            }
+-        }
++        if let conversation = message.conversation {
++            switch (direction, status) {
++            case (.upload, .pending):
++                conversation.pendingUploadCount += 1
++            case (.upload, .synced):
++                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
++                conversation.lastSyncedAt = effectiveDate
++            case (.upload, .failed):
++                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
++            case (.download, .pending):
++                conversation.pendingDownloadCount += 1
++            case (.download, .synced):
++                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
++                conversation.lastSyncedAt = effectiveDate
++            case (.download, .failed):
++                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
++            case (.upload, .syncing), (.download, .syncing):
++                break
++            }
++            updateConversationAfterMessageChange(conversation, message: message)
++        }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+         if let conversation = try conversation(withID: id) {
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
+-            conversation.lastLocalUpdateAt = Date()
+-            updateConversationSummary(for: conversation)
++            conversation.lastLocalUpdateAt = Date()
++            updateConversationAfterMessageChange(conversation, message: conversation.messages.last)
+         } else {
+             let conversation = createDefault()
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
+-            conversation.lastLocalUpdateAt = Date()
+-            updateConversationSummary(for: conversation)
++            conversation.lastLocalUpdateAt = Date()
++            updateConversationAfterMessageChange(conversation, message: conversation.messages.last)
+             context.insert(conversation)
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing to implement sync status helper**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalConversation.swift
+@@
+     var lastMessageTimestamp: Date?
+     var lastMessagePreview: String?
+     var unreadCounts: [String: Int]
+     var aiCategory: LocalMessageCategory?
+     var lastSyncedAt: Date?
+-    var lastLocalUpdateAt: Date?
+     var pendingUploadCount: Int
+     var pendingDownloadCount: Int
+ 
+     @Relationship(deleteRule: .cascade, inverse: \LocalMessage.conversation)
+     var messages: [LocalMessage] = []
+@@
+         unreadCounts: [String: Int] = [:],
+         aiCategory: LocalMessageCategory? = nil,
+         lastSyncedAt: Date? = nil,
+-        lastLocalUpdateAt: Date? = nil,
+         pendingUploadCount: Int = 0,
+         pendingDownloadCount: Int = 0
+     ) {
+         self.id = id
+         self.title = title
+@@
+         self.unreadCounts = unreadCounts
+         self.aiCategory = aiCategory
+         self.lastSyncedAt = lastSyncedAt
+-        self.lastLocalUpdateAt = lastLocalUpdateAt
+         self.pendingUploadCount = pendingUploadCount
+         self.pendingDownloadCount = pendingDownloadCount
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Models/LocalModels/LocalMessage.swift
+@@
+ enum LocalSyncStatus: String, Codable, CaseIterable {
+     case pending
+     case syncing
+     case synced
+     case failed
+ }
+ 
+ enum LocalSyncDirection: String, Codable, CaseIterable {
+     case upload
+     case download
+ }
+ 
+ @Model
+ final class LocalMessage {
+@@
+     var syncDirection: LocalSyncDirection
+     var syncAttemptCount: Int
+     var lastSyncedAt: Date?
+-    var lastModifiedAt: Date
+ 
+     var conversation: LocalConversation?
+ 
+     var sender: LocalUser?
+@@
+-        syncStatus: LocalSyncStatus = .pending,
+-        syncDirection: LocalSyncDirection = .upload,
+-        syncAttemptCount: Int = 0,
+-        lastSyncedAt: Date? = nil,
+-        lastModifiedAt: Date = Date()
++        syncStatus: LocalSyncStatus = .pending,
++        syncDirection: LocalSyncDirection = .upload,
++        syncAttemptCount: Int = 0,
++        lastSyncedAt: Date? = nil
+     ) {
+         self.id = id
+         self.conversationID = conversationID
+         self.senderID = senderID
+         self.content = content
+@@
+         self.metadata = metadata
+         self.syncStatus = syncStatus
+         self.syncDirection = syncDirection
+         self.syncAttemptCount = syncAttemptCount
+         self.lastSyncedAt = lastSyncedAt
+-        self.lastModifiedAt = lastModifiedAt
+     }
+ }
+ 
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        if let conversation = try conversation(withID: id) {
+-            updates(conversation)
+-            conversation.lastSyncedAt = Date()
+-            conversation.lastLocalUpdateAt = Date()
+-            updateConversationAfterMessageChange(conversation, message: conversation.messages.last)
++        if let conversation = try conversation(withID: id) {
++            updates(conversation)
++            conversation.lastSyncedAt = Date()
++            updateConversationSummary(for: conversation)
+         } else {
+             let conversation = createDefault()
+             updates(conversation)
+             conversation.lastSyncedAt = Date()
+-            conversation.lastLocalUpdateAt = Date()
+-            updateConversationAfterMessageChange(conversation, message: conversation.messages.last)
++            updateConversationSummary(for: conversation)
+             context.insert(conversation)
+         }
+         try context.save()
+     }
+@@
+-        message.syncStatus = .pending
+-        message.syncDirection = .upload
+-        message.syncAttemptCount = 0
+-        message.lastModifiedAt = Date()
+-        if message.status == .sending {
+-            message.status = .sent
+-        }
+-        updateConversationAfterMessageChange(conversation, message: message)
++        message.syncStatus = .pending
++        message.syncDirection = .upload
++        message.syncAttemptCount = 0
++        if message.status == .sending {
++            message.status = .sent
++        }
++        updateConversationSummary(for: conversation)
+         try context.save()
+     }
+@@
+-        target.lastModifiedAt = Date()
+-        if let conversation = target.conversation {
+-            updateConversationAfterMessageChange(conversation, message: target)
++        if let conversation = target.conversation {
++            updateConversationSummary(for: conversation)
+         }
+         try context.save()
+     }
+@@
+         message.syncStatus = status
+         message.syncDirection = direction
+         message.lastSyncedAt = syncedAt
+-        let effectiveDate = syncedAt ?? Date()
+-        if status == .synced {
+-            message.lastModifiedAt = effectiveDate
+-        }
++        let effectiveDate = syncedAt ?? Date()
+ 
+         switch status {
+         case .failed:
+             message.syncAttemptCount += 1
+@@
+-        if let conversation = message.conversation {
+-            switch (direction, status) {
+-            case (.upload, .pending):
+-                conversation.pendingUploadCount += 1
+-            case (.upload, .synced):
+-                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+-                conversation.lastSyncedAt = effectiveDate
+-            case (.upload, .failed):
+-                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+-            case (.download, .pending):
+-                conversation.pendingDownloadCount += 1
+-            case (.download, .synced):
+-                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+-                conversation.lastSyncedAt = effectiveDate
+-            case (.download, .failed):
+-                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+-            case (.upload, .syncing), (.download, .syncing):
+-                break
+-            }
+-            updateConversationAfterMessageChange(conversation, message: message)
++        if let conversation = message.conversation {
++            switch (direction, status) {
++            case (.upload, .pending):
++                conversation.pendingUploadCount += 1
++            case (.upload, .synced):
++                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
++                conversation.lastSyncedAt = effectiveDate
++            case (.upload, .failed):
++                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
++            case (.download, .pending):
++                conversation.pendingDownloadCount += 1
++            case (.download, .synced):
++                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
++                conversation.lastSyncedAt = effectiveDate
++            case (.download, .failed):
++                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
++            case (.upload, .syncing), (.download, .syncing):
++                break
++            }
++            updateConversationSummary(for: conversation)
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Ensuring conversation summary updates**
+
+I’m working on adding a private helper to update conversation summaries whenever messages change, ensuring pending upload/download counts, last message timestamps, and previews stay in sync. This includes calling the helper after message status updates, inserts, and deletes to keep conversation data consistent and properly saved.</details></think>
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-    func updateMessageStatus(
+-        messageID: String,
+-        status: LocalMessageStatus
+-    ) throws {
+-        let message = try message(withID: messageID)
+-        message.status = status
+-        message.lastModifiedAt = Date()
+-        try context.save()
+-    }
++    func updateMessageStatus(
++        messageID: String,
++        status: LocalMessageStatus
++    ) throws {
++        let message = try message(withID: messageID)
++        message.status = status
++        if let conversation = message.conversation {
++            updateConversationSummary(for: conversation)
++        }
++        try context.save()
++    }
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Locating updateConversationSummary helper**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating delete message and cleaning references**</details></think>
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "lastModifiedAt" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 0 matches</summary>
+
+Output mode: content
+
+
+_No matches found_
+
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+     func updateMessageSyncStatus(
+         messageID: String,
+         status: LocalSyncStatus,
+         direction: LocalSyncDirection,
+         syncedAt: Date? = Date()
+     ) throws {
+         let message = try message(withID: messageID)
+         message.syncStatus = status
+         message.syncDirection = direction
+         message.lastSyncedAt = syncedAt
+         let effectiveDate = syncedAt ?? Date()
+ 
+         switch status {
+         case .failed:
+             message.syncAttemptCount += 1
+         case .pending:
+             message.syncAttemptCount = 0
+         case .syncing:
+             break
+         case .synced:
+             message.syncAttemptCount = 0
+         }
+ 
+         if let conversation = message.conversation {
+             switch (direction, status) {
+             case (.upload, .pending):
+                 conversation.pendingUploadCount += 1
+             case (.upload, .synced):
+                 conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+                 conversation.lastSyncedAt = effectiveDate
+             case (.upload, .failed):
+                 conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+             case (.download, .pending):
+                 conversation.pendingDownloadCount += 1
+             case (.download, .synced):
+                 conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+                 conversation.lastSyncedAt = effectiveDate
+             case (.download, .failed):
+                 conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+             case (.upload, .syncing), (.download, .syncing):
+                 break
+             }
+             updateConversationSummary(for: conversation)
+         }
+         try context.save()
+     }
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+<think><details><summary>Thought Process</summary>**Re-examining updated code context**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+-        let message = try message(withID: id)
+-        context.delete(message)
+-        try context.save()
++        let message = try message(withID: id)
++        let conversation = message.conversation
++        context.delete(message)
++        if let conversation {
++            updateConversationSummary(for: conversation)
++        }
++        try context.save()
+     }
+@@
+     func resetStore() throws {
+         try container.deleteAllData()
+     }
++
++    // MARK: - Helpers
++
++    private func updateConversationSummary(for conversation: LocalConversation) {
++        let messages = conversation.messages
++        if let latestMessage = messages.max(by: { $0.timestamp < $1.timestamp }) {
++            conversation.lastMessageTimestamp = latestMessage.timestamp
++            if !latestMessage.content.isEmpty {
++                conversation.lastMessagePreview = latestMessage.content
++            } else if latestMessage.mediaURL != nil {
++                conversation.lastMessagePreview = "Attachment"
++            } else {
++                conversation.lastMessagePreview = nil
++            }
++        } else {
++            conversation.lastMessageTimestamp = nil
++            conversation.lastMessagePreview = nil
++        }
++
++        conversation.pendingUploadCount = messages.filter { message in
++            message.syncDirection == .upload && message.syncStatus != .synced
++        }.count
++
++        conversation.pendingDownloadCount = messages.filter { message in
++            message.syncDirection == .download && message.syncStatus != .synced
++        }.count
++    }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: MessageAI/Services/Database/LocalDataManager.swift
+@@
+         let conversation = message.conversation
+         context.delete(message)
+         if let conversation {
+             updateConversationSummary(for: conversation)
+         }
+         try context.save()
+     }
+ 
+     // MARK: - Utilities
+ 
+     func saveIfNeeded() throws {
+         if context.hasChanges {
+             try context.save()
+         }
+     }
+ 
+     func resetStore() throws {
+         try container.deleteAllData()
+     }
+ 
+     // MARK: - Helpers
+ 
+     private func updateConversationSummary(for conversation: LocalConversation) {
+-        let messages = conversation.messages
++        let messages = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+         if let latestMessage = messages.max(by: { $0.timestamp < $1.timestamp }) {
+             conversation.lastMessageTimestamp = latestMessage.timestamp
+             if !latestMessage.content.isEmpty {
+                 conversation.lastMessagePreview = latestMessage.content
+             } else if latestMessage.mediaURL != nil {
+                 conversation.lastMessagePreview = "Attachment"
+             } else {
+                 conversation.lastMessagePreview = nil
+             }
+         } else {
+             conversation.lastMessageTimestamp = nil
+             conversation.lastMessagePreview = nil
+         }
+ 
+-        conversation.pendingUploadCount = messages.filter { message in
+-            message.syncDirection == .upload && message.syncStatus != .synced
+-        }.count
+-
+-        conversation.pendingDownloadCount = messages.filter { message in
+-            message.syncDirection == .download && message.syncStatus != .synced
+-        }.count
++        conversation.pendingUploadCount = messages.reduce(into: 0) { result, message in
++            if message.syncDirection == .upload && message.syncStatus != .synced {
++                result += 1
++            }
++        }
++
++        conversation.pendingDownloadCount = messages.reduce(into: 0) { result, message in
++            if message.syncDirection == .download && message.syncStatus != .synced {
++                result += 1
++            }
++        }
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalUser.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalConversation.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Models/LocalModels/LocalMessage.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Database/LocalDataManager.swift
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing sync improvements**</details></think>
+
+---
+
+### Local Persistence + Sync Status
+
+- Introduced sync-aware SwiftData models:
+  - `LocalUser` now records `lastSyncedAt`.
+  - `LocalConversation` tracks `lastSyncedAt`, `pendingUploadCount`, `pendingDownloadCount`.
+  - `LocalMessage` includes `syncStatus`, `syncDirection`, `syncAttemptCount`, `lastSyncedAt` and keeps IDs/content aligned with Firestore.
+
+- Built `LocalDataManager` (`MessageAI/Services/Database/LocalDataManager.swift`) to own a shared `ModelContainer`, offering CRUD helpers plus:
+  - Conversation/message upsert, fetch, delete with automatic summary recalculation.
+  - Sync status utilities updating attempt counts, direction, timestamps, and pending counters.
+  - Central `updateConversationSummary` to maintain last message preview, timestamp, and pending sync counts.
+
+### Next steps
+- Wire `LocalDataManager` into repositories (`MessageRepository`, etc.) when they’re created.
+- Add unit coverage once we tackle subtask 4.
 
 ---
 

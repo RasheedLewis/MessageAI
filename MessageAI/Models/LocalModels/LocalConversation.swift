@@ -24,6 +24,9 @@ final class LocalConversation {
     var lastMessagePreview: String?
     var unreadCounts: [String: Int]
     var aiCategory: LocalMessageCategory?
+    var lastSyncedAt: Date?
+    var pendingUploadCount: Int
+    var pendingDownloadCount: Int
 
     @Relationship(deleteRule: .cascade, inverse: \LocalMessage.conversation)
     var messages: [LocalMessage] = []
@@ -38,7 +41,10 @@ final class LocalConversation {
         lastMessageTimestamp: Date? = nil,
         lastMessagePreview: String? = nil,
         unreadCounts: [String: Int] = [:],
-        aiCategory: LocalMessageCategory? = nil
+        aiCategory: LocalMessageCategory? = nil,
+        lastSyncedAt: Date? = nil,
+        pendingUploadCount: Int = 0,
+        pendingDownloadCount: Int = 0
     ) {
         self.id = id
         self.title = title
@@ -47,6 +53,9 @@ final class LocalConversation {
         self.lastMessagePreview = lastMessagePreview
         self.unreadCounts = unreadCounts
         self.aiCategory = aiCategory
+        self.lastSyncedAt = lastSyncedAt
+        self.pendingUploadCount = pendingUploadCount
+        self.pendingDownloadCount = pendingDownloadCount
     }
 }
 

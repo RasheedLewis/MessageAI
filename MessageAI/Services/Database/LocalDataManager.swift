@@ -59,12 +59,15 @@ final class LocalDataManager {
         createDefault: @autoclosure () -> LocalConversation,
         updates: (LocalConversation) -> Void
     ) throws {
-        let existing = try conversation(withID: id)
-        if let conversation = existing {
+        if let conversation = try conversation(withID: id) {
             updates(conversation)
+            conversation.lastSyncedAt = Date()
+            updateConversationSummary(for: conversation)
         } else {
             let conversation = createDefault()
             updates(conversation)
+            conversation.lastSyncedAt = Date()
+            updateConversationSummary(for: conversation)
             context.insert(conversation)
         }
         try context.save()
@@ -118,6 +121,13 @@ final class LocalDataManager {
             context.insert(message)
         }
 
+        message.syncStatus = .pending
+        message.syncDirection = .upload
+        message.syncAttemptCount = 0
+        if message.status == .sending {
+            message.status = .sent
+        }
+        updateConversationSummary(for: conversation)
         try context.save()
     }
 
@@ -131,25 +141,42 @@ final class LocalDataManager {
             fetchLimit: 1
         )
 
+        let target: LocalMessage
         if let existing = try context.fetch(descriptor).first {
             updates(existing)
+            target = existing
         } else {
             let message = createDefault()
             updates(message)
             context.insert(message)
+            target = message
         }
 
+        if let conversation = target.conversation {
+            updateConversationSummary(for: conversation)
+        }
         try context.save()
     }
 
     func fetchMessages(
         forConversationID conversationID: String,
-        limit: Int? = nil
+        limit: Int? = nil,
+        includeFailed: Bool = true
     ) throws -> [LocalMessage] {
-        var descriptor = FetchDescriptor<LocalMessage>(
-            predicate: #Predicate { message in
+        let predicate: Predicate<LocalMessage>
+
+        if includeFailed {
+            predicate = #Predicate { message in
                 message.conversationID == conversationID
-            },
+            }
+        } else {
+            predicate = #Predicate { message in
+                message.conversationID == conversationID && message.syncStatus != .failed
+            }
+        }
+
+        var descriptor = FetchDescriptor<LocalMessage>(
+            predicate: predicate,
             sortBy: [
                 SortDescriptor(\LocalMessage.timestamp)
             ]
@@ -181,12 +208,66 @@ final class LocalDataManager {
     ) throws {
         let message = try message(withID: messageID)
         message.status = status
+        if let conversation = message.conversation {
+            updateConversationSummary(for: conversation)
+        }
+        try context.save()
+    }
+
+    func updateMessageSyncStatus(
+        messageID: String,
+        status: LocalSyncStatus,
+        direction: LocalSyncDirection,
+        syncedAt: Date? = Date()
+    ) throws {
+        let message = try message(withID: messageID)
+        message.syncStatus = status
+        message.syncDirection = direction
+        message.lastSyncedAt = syncedAt
+        let effectiveDate = syncedAt ?? Date()
+
+        switch status {
+        case .failed:
+            message.syncAttemptCount += 1
+        case .pending:
+            message.syncAttemptCount = 0
+        case .syncing:
+            break
+        case .synced:
+            message.syncAttemptCount = 0
+        }
+
+        if let conversation = message.conversation {
+            switch (direction, status) {
+            case (.upload, .pending):
+                conversation.pendingUploadCount += 1
+            case (.upload, .synced):
+                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+                conversation.lastSyncedAt = effectiveDate
+            case (.upload, .failed):
+                conversation.pendingUploadCount = max(0, conversation.pendingUploadCount - 1)
+            case (.download, .pending):
+                conversation.pendingDownloadCount += 1
+            case (.download, .synced):
+                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+                conversation.lastSyncedAt = effectiveDate
+            case (.download, .failed):
+                conversation.pendingDownloadCount = max(0, conversation.pendingDownloadCount - 1)
+            case (.upload, .syncing), (.download, .syncing):
+                break
+            }
+            updateConversationSummary(for: conversation)
+        }
         try context.save()
     }
 
     func deleteMessage(withID id: String) throws {
         let message = try message(withID: id)
+        let conversation = message.conversation
         context.delete(message)
+        if let conversation {
+            updateConversationSummary(for: conversation)
+        }
         try context.save()
     }
 
@@ -200,6 +281,37 @@ final class LocalDataManager {
 
     func resetStore() throws {
         try container.deleteAllData()
+    }
+
+    // MARK: - Helpers
+
+    private func updateConversationSummary(for conversation: LocalConversation) {
+        let messages = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+        if let latestMessage = messages.max(by: { $0.timestamp < $1.timestamp }) {
+            conversation.lastMessageTimestamp = latestMessage.timestamp
+            if !latestMessage.content.isEmpty {
+                conversation.lastMessagePreview = latestMessage.content
+            } else if latestMessage.mediaURL != nil {
+                conversation.lastMessagePreview = "Attachment"
+            } else {
+                conversation.lastMessagePreview = nil
+            }
+        } else {
+            conversation.lastMessageTimestamp = nil
+            conversation.lastMessagePreview = nil
+        }
+
+        conversation.pendingUploadCount = messages.reduce(into: 0) { result, message in
+            if message.syncDirection == .upload && message.syncStatus != .synced {
+                result += 1
+            }
+        }
+
+        conversation.pendingDownloadCount = messages.reduce(into: 0) { result, message in
+            if message.syncDirection == .download && message.syncStatus != .synced {
+                result += 1
+            }
+        }
     }
 }
 

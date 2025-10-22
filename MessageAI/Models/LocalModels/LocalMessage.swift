@@ -9,6 +9,18 @@ enum LocalMessageStatus: String, Codable, CaseIterable {
     case failed
 }
 
+enum LocalSyncStatus: String, Codable, CaseIterable {
+    case pending
+    case syncing
+    case synced
+    case failed
+}
+
+enum LocalSyncDirection: String, Codable, CaseIterable {
+    case upload
+    case download
+}
+
 @Model
 final class LocalMessage {
     @Attribute(.unique) var id: String
@@ -26,6 +38,10 @@ final class LocalMessage {
     var priority: Int?
     var collaborationScore: Double?
     var metadata: [String: String]
+    var syncStatus: LocalSyncStatus
+    var syncDirection: LocalSyncDirection
+    var syncAttemptCount: Int
+    var lastSyncedAt: Date?
 
     var conversation: LocalConversation?
 
@@ -44,7 +60,11 @@ final class LocalMessage {
         sentiment: String? = nil,
         priority: Int? = nil,
         collaborationScore: Double? = nil,
-        metadata: [String: String] = [:]
+        metadata: [String: String] = [:],
+        syncStatus: LocalSyncStatus = .pending,
+        syncDirection: LocalSyncDirection = .upload,
+        syncAttemptCount: Int = 0,
+        lastSyncedAt: Date? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -59,6 +79,10 @@ final class LocalMessage {
         self.priority = priority
         self.collaborationScore = collaborationScore
         self.metadata = metadata
+        self.syncStatus = syncStatus
+        self.syncDirection = syncDirection
+        self.syncAttemptCount = syncAttemptCount
+        self.lastSyncedAt = lastSyncedAt
     }
 }
 
