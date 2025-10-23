@@ -2,6 +2,7 @@ import AuthenticationServices
 import Combine
 import SwiftUI
 import UIKit
+import FirebaseMessaging
 
 @MainActor
 final class AuthenticationViewModel: ObservableObject {
@@ -74,6 +75,7 @@ final class AuthenticationViewModel: ObservableObject {
         state = .loading
         do {
             _ = try await authService.signInWithGoogle(presenting: controller)
+            try await syncFCMToken()
         } catch {
             state = .idle
             self.error = error.localizedDescription
@@ -84,6 +86,7 @@ final class AuthenticationViewModel: ObservableObject {
         state = .loading
         do {
             _ = try await authService.signInWithApple(authorization: authorization)
+            try await syncFCMToken()
         } catch {
             state = .idle
             self.error = error.localizedDescription
@@ -126,6 +129,11 @@ final class AuthenticationViewModel: ObservableObject {
             state = .needsProfileSetup
             self.error = error.localizedDescription
         }
+    }
+
+    private func syncFCMToken() async throws {
+        guard let token = Messaging.messaging().fcmToken else { return }
+        try await userRepository.updateFCMToken(token)
     }
 }
 

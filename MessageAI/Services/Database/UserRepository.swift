@@ -11,6 +11,7 @@ public protocol UserRepositoryType {
     func updatePresence(isOnline: Bool) async throws
     func updateLastSeen(date: Date) async throws
     func updateCreatorProfile(_ profile: CreatorProfile) async throws
+    func updateFCMToken(_ token: String) async throws
 }
 
 public protocol UsersCollectionProviding {
@@ -130,6 +131,19 @@ public final class UserRepository: UserRepositoryType {
             .document(uid)
             .setData([
                 "creatorProfile": profile.firestoreData()
+            ], merge: true)
+    }
+
+    public func updateFCMToken(_ token: String) async throws {
+        guard let uid = authSession.currentUserID else {
+            throw UserRepositoryError.missingAuthenticatedUser
+        }
+
+        try await usersCollection
+            .document(uid)
+            .setData([
+                "fcmToken": token,
+                "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
             ], merge: true)
     }
 }
