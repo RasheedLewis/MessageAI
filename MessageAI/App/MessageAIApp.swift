@@ -14,7 +14,7 @@ struct MessageAIApp: App {
 
     init() {
         FirebaseApp.configure()
-        let localDataManager = try! LocalDataManager(inMemory: true)
+        let localDataManager = try! LocalDataManager()
         let conversationRepository = ConversationRepository()
         let messageRepository = MessageRepository()
         let listener = MessageListenerService(localDataManager: localDataManager)

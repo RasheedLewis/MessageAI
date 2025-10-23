@@ -85,10 +85,11 @@ final class ConversationListViewModel: ObservableObject {
             let localConversations = try localDataManager.fetchConversations()
             let items = localConversations.map { local -> ConversationItem in
                 let unreadCount = local.unreadCounts[currentUserID] ?? 0
+                let preview = normalizedPreview(for: local)
                 return ConversationItem(
                     id: local.id,
                     title: local.title,
-                    lastMessagePreview: local.lastMessagePreview,
+                    lastMessagePreview: preview,
                     lastMessageTime: local.lastMessageTimestamp,
                     unreadCount: unreadCount,
                     isOnline: false,
@@ -124,6 +125,30 @@ final class ConversationListViewModel: ObservableObject {
             break
         }
         return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+
+    private func normalizedPreview(for conversation: LocalConversation) -> String? {
+        if let preview = conversation.lastMessagePreview,
+           !preview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return preview
+        }
+
+        guard let lastMessage = try? localDataManager
+            .fetchMessages(forConversationID: conversation.id, limit: 1)
+            .last else {
+            return nil
+        }
+
+        let trimmedContent = lastMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedContent.isEmpty {
+            return trimmedContent
+        }
+
+        if lastMessage.mediaURL != nil {
+            return "Attachment"
+        }
+
+        return nil
     }
 }
 
