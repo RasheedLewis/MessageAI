@@ -24,7 +24,7 @@ struct MainTabView: View {
                 }
                 .tag(Tab.assistant)
 
-            SettingsPlaceholderView()
+            SettingsView(onSignOut: AuthenticationViewModel().signOut)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
@@ -48,13 +48,27 @@ private struct AssistantPlaceholderView: View {
     }
 }
 
-private struct SettingsPlaceholderView: View {
+private struct SettingsView: View {
+    let onSignOut: () -> Void
+
+    @State private var isSigningOut = false
+    @State private var errorMessage: String?
+
     var body: some View {
         NavigationStack {
             Form {
                 Section("Account") {
                     Label("Profile", systemImage: "person.crop.circle")
                     Label("Notifications", systemImage: "bell.fill")
+
+                    Button(role: .destructive, action: signOut) {
+                        if isSigningOut {
+                            ProgressView()
+                        } else {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
+                    .disabled(isSigningOut)
                 }
 
                 Section("About") {
@@ -63,7 +77,26 @@ private struct SettingsPlaceholderView: View {
                 }
             }
             .navigationTitle("Settings")
+            .alert("Couldn't sign out", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { _ in errorMessage = nil }
+            )) {
+                Button("OK", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "Unknown error")
+            }
         }
+    }
+
+    private func signOut() {
+        guard !isSigningOut else { return }
+        isSigningOut = true
+        do {
+            onSignOut()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isSigningOut = false
     }
 }
 

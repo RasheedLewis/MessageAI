@@ -5945,3 +5945,375 @@ The missing-argument error stemmed from `ServiceResolver` now expecting a `userD
 
 ---
 
+_**User (2025-10-23 02:50Z)**_
+
+Before continuing, implement a sign-out button on the settings page
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Searching for sign-out implementation**</details></think>
+
+---
+
+Tool use: **ripgrep**
+
+<details>
+<summary>Grep for "signOut" in "/Users/rasheedlewis/Workspace/gauntlet/MessageAI" • 14 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `./MessageAI/ViewModels/AuthenticationViewModel.swift` | `func signOut() \{` | L93 |
+| `./MessageAI/ViewModels/AuthenticationViewModel.swift` | `try authService.signOut()` | L95 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `func signOut() throws` | L71 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `func signOut()` | L77 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `public func signOut() throws \{` | L203 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `try authProvider.signOut()` | L205 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `googleSignIn.signOut()` | L206 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `func signOut() throws \{` | L290 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `try auth.signOut()` | L291 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `func signOut() \{` | L310 |
+| `./MessageAI/Services/Authentication/AuthenticationService.swift` | `instance.signOut()` | L311 |
+| `./MessageAITests/AuthenticationServiceTests.swift` | `try service.signOut()` | L77 |
+| `./MessageAITests/AuthenticationServiceTests.swift` | `func signOut() \{` | L113 |
+| `./MessageAITests/AuthenticationServiceTests.swift` | `func signOut() throws \{` | L154 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/AuthenticationViewModel.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift
+@@
+-            AssistantPlaceholderView()
++            AssistantPlaceholderView()
+                 .tabItem {
+                     Label("Assistant", systemImage: "sparkles")
+                 }
+                 .tag(Tab.assistant)
+ 
+-            SettingsPlaceholderView()
++            SettingsView { services in
++                AuthenticationViewModel().signOut()
++            }
+                 .tabItem {
+                     Label("Settings", systemImage: "gearshape")
+                 }
+                 .tag(Tab.settings)
+         }
+@@
+-private struct SettingsPlaceholderView: View {
+-    var body: some View {
+-        NavigationStack {
+-            Form {
+-                Section("Account") {
+-                    Label("Profile", systemImage: "person.crop.circle")
+-                    Label("Notifications", systemImage: "bell.fill")
+-                }
+-
+-                Section("About") {
+-                    Label("Terms of Service", systemImage: "doc.text")
+-                    Label("Privacy Policy", systemImage: "lock.shield")
+-                }
+-            }
+-            .navigationTitle("Settings")
+-        }
+-    }
+-}
++private struct SettingsView: View {
++    let onSignOut: () -> Void
++
++    @State private var isSigningOut = false
++    @State private var errorMessage: String?
++
++    var body: some View {
++        NavigationStack {
++            Form {
++                Section("Account") {
++                    Label("Profile", systemImage: "person.crop.circle")
++                    Label("Notifications", systemImage: "bell.fill")
++
++                    Button(role: .destructive, action: signOut) {
++                        if isSigningOut {
++                            ProgressView()
++                        } else {
++                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
++                        }
++                    }
++                    .disabled(isSigningOut)
++                }
++
++                Section("About") {
++                    Label("Terms of Service", systemImage: "doc.text")
++                    Label("Privacy Policy", systemImage: "lock.shield")
++                }
++            }
++            .navigationTitle("Settings")
++            .alert("Couldn't sign out", isPresented: Binding(
++                get: { errorMessage != nil },
++                set: { _ in errorMessage = nil }
++            )) {
++                Button("OK", role: .cancel) { errorMessage = nil }
++            } message: {
++                Text(errorMessage ?? "Unknown error")
++            }
++        }
++    }
++
++    private func signOut() {
++        guard !isSigningOut else { return }
++        isSigningOut = true
++        Task {
++            do {
++                try await Task.sleep(for: .milliseconds(50))
++                onSignOut()
++            } catch {
++                await MainActor.run {
++                    errorMessage = error.localizedDescription
++                    isSigningOut = false
++                }
++            }
++        }
++    }
++}
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift
+@@
+-            SettingsView { services in
+-                AuthenticationViewModel().signOut()
+-            }
++            SettingsView { AuthenticationViewModel().signOut() }
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && git status -sb
+```
+
+```
+## main...origin/main [ahead 3]
+ M .specstory/history/2025-10-22_15-43Z-look-at-@prd-md-,-@tasks-md-,-and-@arch-mermaid-for.md
+ M MessageAI/Views/Main/MainTabView.swift
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI && open -a Xcode MessageAI.xcodeproj/project.pbxproj
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Optimizing signOut implementation**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift
+@@
+ private struct SettingsView: View {
+     let onSignOut: () -> Void
+ 
+     @State private var isSigningOut = false
+     @State private var errorMessage: String?
+@@
+                 }
+             }
+             .navigationTitle("Settings")
+             .alert("Couldn't sign out", isPresented: Binding(
+                 get: { errorMessage != nil },
+                 set: { _ in errorMessage = nil }
+             )) {
+                 Button("OK", role: .cancel) { errorMessage = nil }
+             } message: {
+                 Text(errorMessage ?? "Unknown error")
+             }
+         }
+     }
+ 
+     private func signOut() {
+         guard !isSigningOut else { return }
+-        isSigningOut = true
+-        Task {
+-            do {
+-                try await Task.sleep(for: .milliseconds(50))
+-                onSignOut()
+-            } catch {
+-                await MainActor.run {
+-                    errorMessage = error.localizedDescription
+-                    isSigningOut = false
+-                }
+-            }
+-        }
++        isSigningOut = true
++        do {
++            onSignOut()
++        } catch {
++            errorMessage = error.localizedDescription
++        }
++        isSigningOut = false
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Main/MainTabView.swift
+@@
+-            SettingsView { AuthenticationViewModel().signOut() }
++            SettingsView(onSignOut: AuthenticationViewModel().signOut)
+*** End Patch
+```
+
+---
+
+## Settings Sign-Out Action
+
+- Replaced the placeholder settings tab with `SettingsView(onSignOut:)` that shows account/about sections and a destructive `Sign Out` button.[^1]
+- `Sign Out` calls straight into `AuthenticationViewModel().signOut()` and shows a simple alert if the operation throws.[^1]
+
+### Notes
+- `AuthenticationViewModel().signOut()` returns `Void` and already surfaces failures via its `error` publisher, so the settings view handles errors synchronously via a do/catch.
+- You can hook the placeholder profile/notification rows to real destinations later.
+
+No tests were added—this is UI wiring that depends on existing auth logic. You can run the app and confirm the button signs out and returns to the login screen.
+
+[^1]: ```14:67:MessageAI/Views/Main/MainTabView.swift
+TabView(selection: $selectedTab) {
+    ConversationListView(services: services)
+        .tabItem {
+            Label("Messages", systemImage: "bubble.left.and.bubble.right.fill")
+        }
+        .tag(Tab.conversations)
+
+    AssistantPlaceholderView()
+        .tabItem {
+            Label("Assistant", systemImage: "sparkles")
+        }
+        .tag(Tab.assistant)
+
+    SettingsView(onSignOut: AuthenticationViewModel().signOut)
+        .tabItem {
+            Label("Settings", systemImage: "gearshape")
+        }
+        .tag(Tab.settings)
+}
+// ... existing code ...
+private struct SettingsView: View {
+    let onSignOut: () -> Void
+
+    @State private var isSigningOut = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Account") {
+                    Label("Profile", systemImage: "person.crop.circle")
+                    Label("Notifications", systemImage: "bell.fill")
+
+                    Button(role: .destructive, action: signOut) {
+                        if isSigningOut {
+                            ProgressView()
+                        } else {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
+                    .disabled(isSigningOut)
+                }
+                // ... existing code ...
+```
+
+---
+
+_**User (2025-10-23 02:50Z)**_
+
+When trying to sign in with Apple account, I get this error:
+
+Authorization failed: Error Domain=AKAuthenticationError Code=-7026 "(null)" UserInfo={AKClientBundleID=com.publicsphere.MessageAI}
+LaunchServices: store (null) or url (null) was nil: Error Domain=NSOSStatusErrorDomain Code=-54 "process may not map database" UserInfo={_LSLine=72, _LSFunction=_LSServer_GetServerStoreForConnectionWithCompletionHandler, _LSFile=LSDReadService.mm, NSDebugDescription=process may not map database}
+Attempt to map database failed: permission was denied. This attempt will not be retried.
+Failed to initialize client context with error Error Domain=NSOSStatusErrorDomain Code=-54 "process may not map database" UserInfo={_LSLine=72, _LSFunction=_LSServer_GetServerStoreForConnectionWithCompletionHandler, _LSFile=LSDReadService.mm, NSDebugDescription=process may not map database}
+Failed to get application extension record: Error Domain=NSOSStatusErrorDomain Code=-54 "(null)"
+ASAuthorizationController credential request failed with error: Error Domain=com.apple.AuthenticationServices.AuthorizationError Code=1000 "(null)"
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Explaining Apple Sign-In issues and solutions**
+
+I’m putting together a detailed explanation about why Apple Sign-In might fail, especially on simulators, highlighting the need for proper entitlements, developer team configuration, and simulator Apple ID sign-in. I’ll also suggest practical steps in Xcode and Firebase to fix the errors and reference the simulator limitations causing the error message.</details></think>
+
+---
+
+That log means the simulator can’t access the LaunchServices/authentication database the Apple Sign-In controller expects. It most often happens when the bundle isn’t signed for Sign in with Apple, or the simulator/user isn’t authorized to use the credential flow. Here’s what to check:
+
+- **Add the capability**: In Xcode open `MessageAI` → target settings → *Signing & Capabilities* → click “+ Capability” → add **Sign In with Apple**. Make sure the proper development team is selected so Xcode can sign the bundle with that entitlement.
+- **Simulator account**: Apple Sign-In in the simulator requires logging in with a test Apple ID under *Settings → Apple ID → Sign In*. If the simulator is signed out, the auth controller fails with `Code=-7026`.
+- **Clean stale data**: Occasionally the simulator’s LaunchServices database is locked. Quit Xcode and the booted simulator, then run `xcrun simctl erase all` (or erase the specific device) and reboot the Mac if needed.
+- **Device testing**: If you have a physical device, deploy there once the capability is added; Apple’s auth flow is more reliable on hardware.
+
+After you’ve added the entitlement and either signed into the simulator or moved to a device, rebuild/run and the Apple sign-in sheet should appear normally.
+
+---
+
