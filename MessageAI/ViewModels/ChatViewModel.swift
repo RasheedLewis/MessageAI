@@ -13,10 +13,19 @@ final class ChatViewModel: ObservableObject {
         let status: LocalMessageStatus
     }
 
+    struct Participant: Identifiable, Equatable {
+        let id: String
+        let displayName: String
+    }
+
     @Published private(set) var messages: [ChatMessage] = []
     @Published var draftText: String = ""
     @Published private(set) var isSending: Bool = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var conversationTitle: String = "Conversation"
+    @Published private(set) var participantSummary: String = ""
+    @Published private(set) var isGroupConversation: Bool = false
+    @Published private(set) var participants: [Participant] = []
 
     private let conversationID: String
     private let localDataManager: LocalDataManager
@@ -86,6 +95,7 @@ final class ChatViewModel: ObservableObject {
             }
             .sink { [weak self] _ in
                 self?.reloadMessages()
+                self?.updateConversationInfo()
             }
             .store(in: &cancellables)
     }
@@ -93,6 +103,7 @@ final class ChatViewModel: ObservableObject {
     private func reloadMessages() {
         let localMessages = (try? localDataManager.fetchMessages(forConversationID: conversationID)) ?? []
         messages = localMessages.map { makeChatMessage(from: $0) }
+        updateConversationInfo()
     }
 
     private func handleError(_ error: Error) {
@@ -113,26 +124,75 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func loadParticipantNames() async {
-        guard
-            let conversation = try? localDataManager.conversation(withID: conversationID),
-            conversation.type == .group,
-            !conversation.participantIDs.isEmpty
-        else {
+        guard let conversation = try? localDataManager.conversation(withID: conversationID) else {
+            await MainActor.run {
+                participantNames = [:]
+                participants = []
+                conversationTitle = "Conversation"
+                participantSummary = ""
+                isGroupConversation = false
+            }
             return
         }
 
-        do {
-            let users = try await userDirectoryService.fetchUsers(withIDs: conversation.participantIDs)
-            let mapping = users.reduce(into: [String: String]()) { partialResult, user in
-                partialResult[user.id] = user.displayName
+        let missingIDs = conversation.participantIDs.filter { participantNames[$0] == nil && $0 != currentUserID }
+        if !missingIDs.isEmpty {
+            do {
+                let users = try await userDirectoryService.fetchUsers(withIDs: missingIDs)
+                var updated = participantNames
+                users.forEach { updated[$0.id] = $0.displayName }
+                await MainActor.run { participantNames = updated }
+            } catch {
+                // Ignore errors; UI will fall back to default labeling.
             }
-            await MainActor.run {
-                participantNames = mapping
+        }
+
+        await MainActor.run {
+            updateConversationInfo()
+        }
+    }
+
+    private func updateConversationInfo() {
+        guard let conversation = try? localDataManager.conversation(withID: conversationID) else {
+            conversationTitle = "Conversation"
+            participantSummary = ""
+            isGroupConversation = false
+            participants = []
+            return
+        }
+
+        isGroupConversation = conversation.type == .group
+        conversationTitle = conversation.title
+
+        let participantIDs = conversation.participantIDs
+        let mappedParticipants: [Participant] = participantIDs.compactMap { id in
+            let displayName: String
+            if id == currentUserID {
+                displayName = "You"
+            } else if let cached = participantNames[id] {
+                displayName = cached
+            } else {
+                displayName = "Unknown"
             }
-        } catch {
-            await MainActor.run {
-                participantNames = [:]
+            return Participant(id: id, displayName: displayName)
+        }
+        participants = mappedParticipants
+
+        if isGroupConversation {
+            let otherParticipants = mappedParticipants.filter { $0.id != currentUserID }
+            switch otherParticipants.count {
+            case 0:
+                participantSummary = "Only you"
+            case 1:
+                participantSummary = otherParticipants[0].displayName
+            case 2:
+                participantSummary = otherParticipants.map { $0.displayName }.joined(separator: ", ")
+            default:
+                let firstTwo = otherParticipants.prefix(2).map { $0.displayName }.joined(separator: ", ")
+                participantSummary = "\(firstTwo) +\(otherParticipants.count - 2) more"
             }
+        } else {
+            participantSummary = ""
         }
     }
 }

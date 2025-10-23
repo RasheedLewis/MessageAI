@@ -10,6 +10,8 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            header
+            Divider()
             messagesList
             Divider()
             MessageInputView(
@@ -19,7 +21,6 @@ struct ChatView: View {
                 onAttachment: nil
             )
         }
-        .navigationTitle("Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { viewModel.onAppear() }
         .onDisappear { viewModel.onDisappear() }
@@ -29,6 +30,40 @@ struct ChatView: View {
                 ErrorBanner(message: errorMessage)
             }
         }
+    }
+
+    private var header: some View {
+        VStack(spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.conversationTitle)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    if !viewModel.participantSummary.isEmpty {
+                        Text(viewModel.participantSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                if viewModel.isGroupConversation {
+                    NavigationLink {
+                        GroupInfoView(participants: viewModel.participants)
+                    } label: {
+                        Image(systemName: "person.3.fill")
+                            .imageScale(.medium)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+        }
+        .background(Color(.systemBackground))
     }
 
     private var messagesList: some View {
@@ -96,6 +131,12 @@ private struct MessageRowView: View {
 
     private var bubble: some View {
         VStack(alignment: message.isCurrentUser ? .trailing : .leading, spacing: 4) {
+            if !message.isCurrentUser, let senderName = message.senderName {
+                Text(senderName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
             Text(message.content)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -128,6 +169,32 @@ private struct MessageRowView: View {
         case .failed:
             return "exclamationmark.triangle"
         }
+    }
+}
+
+private struct GroupInfoView: View {
+    let participants: [ChatViewModel.Participant]
+
+    var body: some View {
+        List(participants) { participant in
+            HStack {
+                Circle()
+                    .fill(Color(.systemGray5))
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Text(initials(for: participant.displayName))
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    )
+                Text(participant.displayName)
+            }
+        }
+        .navigationTitle("Group Info")
+    }
+
+    private func initials(for name: String) -> String {
+        let parts = name.split(separator: " ")
+        return parts.prefix(2).map { $0.prefix(1).uppercased() }.joined()
     }
 }
 

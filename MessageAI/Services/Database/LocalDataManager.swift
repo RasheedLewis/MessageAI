@@ -46,6 +46,18 @@ final class LocalDataManager {
         try context.save()
     }
 
+    func updateConversation(
+        id: String,
+        updates: (LocalConversation) -> Void
+    ) throws {
+        guard let conversation = try conversation(withID: id) else {
+            throw LocalDataManagerError.conversationNotFound(id)
+        }
+        updates(conversation)
+        conversation.lastSyncedAt = Date()
+        try context.save()
+    }
+
     func upsertConversation(
         id: String,
         createDefault: @autoclosure () -> LocalConversation,
