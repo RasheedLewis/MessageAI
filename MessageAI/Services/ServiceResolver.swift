@@ -8,6 +8,7 @@ final class ServiceResolver: ObservableObject {
     @Published var conversationRepository: ConversationRepositoryProtocol
     @Published var messageRepository: MessageRepositoryProtocol
     @Published var userSearchService: UserSearchServiceProtocol
+    @Published var userDirectoryService: UserDirectoryServiceProtocol
     @Published var groupAvatarService: GroupAvatarUploading
     @Published var currentUserID: String
 
@@ -18,6 +19,7 @@ final class ServiceResolver: ObservableObject {
         conversationRepository: ConversationRepositoryProtocol,
         messageRepository: MessageRepositoryProtocol,
         userSearchService: UserSearchServiceProtocol,
+        userDirectoryService: UserDirectoryServiceProtocol,
         groupAvatarService: GroupAvatarUploading,
         currentUserID: String
     ) {
@@ -27,6 +29,7 @@ final class ServiceResolver: ObservableObject {
         self.conversationRepository = conversationRepository
         self.messageRepository = messageRepository
         self.userSearchService = userSearchService
+        self.userDirectoryService = userDirectoryService
         self.groupAvatarService = groupAvatarService
         self.currentUserID = currentUserID
     }
@@ -36,10 +39,12 @@ final class ServiceResolver: ObservableObject {
         let conversationRepository = ConversationRepository()
         let messageRepository = MessageRepository()
         let listener = MessageListenerService(localDataManager: localDataManager)
+        let userDirectoryService = UserDirectoryService()
         let messageService = MessageService(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,
-            messageRepository: messageRepository
+            messageRepository: messageRepository,
+            userDirectoryService: userDirectoryService
         )
 
         return ServiceResolver(
@@ -49,6 +54,7 @@ final class ServiceResolver: ObservableObject {
             conversationRepository: conversationRepository,
             messageRepository: messageRepository,
             userSearchService: UserSearchService(),
+            userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
             currentUserID: "demo"
         )

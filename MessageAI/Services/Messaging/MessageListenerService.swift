@@ -311,7 +311,8 @@ final class MessageListenerService: MessageListenerServiceProtocol {
             syncStatus: .synced,
             syncDirection: .download,
             syncAttemptCount: 0,
-            lastSyncedAt: clock()
+            lastSyncedAt: clock(),
+            senderDisplayName: nil
         )
     }
 

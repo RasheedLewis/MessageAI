@@ -7,6 +7,7 @@ final class ChatViewModel: ObservableObject {
         let id: String
         let content: String
         let senderID: String
+        let senderName: String?
         let timestamp: Date
         let isCurrentUser: Bool
         let status: LocalMessageStatus
@@ -21,8 +22,10 @@ final class ChatViewModel: ObservableObject {
     private let localDataManager: LocalDataManager
     private let messageService: MessageServiceProtocol
     private let listenerService: MessageListenerServiceProtocol
+    private let userDirectoryService: UserDirectoryServiceProtocol
     private let currentUserID: String
     private var cancellables: Set<AnyCancellable> = []
+    private var participantNames: [String: String] = [:]
 
     init(
         conversationID: String,
@@ -32,12 +35,16 @@ final class ChatViewModel: ObservableObject {
         self.localDataManager = services.localDataManager
         self.messageService = services.messageService
         self.listenerService = services.messageListenerService
+        self.userDirectoryService = services.userDirectoryService
         self.currentUserID = services.currentUserID
         observeMessageUpdates()
     }
 
     func onAppear() {
-        reloadMessages()
+        Task {
+            await loadParticipantNames()
+            await MainActor.run { self.reloadMessages() }
+        }
         listenerService.startMessagesListener(
             for: conversationID,
             currentUserID: currentUserID
@@ -98,10 +105,35 @@ final class ChatViewModel: ObservableObject {
             id: local.id,
             content: local.content,
             senderID: local.senderID,
+            senderName: participantNames[local.senderID],
             timestamp: local.timestamp,
             isCurrentUser: local.senderID == currentUserID,
             status: local.status
         )
+    }
+
+    private func loadParticipantNames() async {
+        guard
+            let conversation = try? localDataManager.conversation(withID: conversationID),
+            conversation.type == .group,
+            !conversation.participantIDs.isEmpty
+        else {
+            return
+        }
+
+        do {
+            let users = try await userDirectoryService.fetchUsers(withIDs: conversation.participantIDs)
+            let mapping = users.reduce(into: [String: String]()) { partialResult, user in
+                partialResult[user.id] = user.displayName
+            }
+            await MainActor.run {
+                participantNames = mapping
+            }
+        } catch {
+            await MainActor.run {
+                participantNames = [:]
+            }
+        }
     }
 }
 

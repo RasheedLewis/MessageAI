@@ -289,12 +289,21 @@ final class LocalDataManager {
 
         if let latestMessage = messages.last {
             conversation.lastMessageTimestamp = latestMessage.timestamp
+
+            var preview: String?
             if !latestMessage.content.isEmpty {
-                conversation.lastMessagePreview = latestMessage.content
+                preview = latestMessage.content
             } else if latestMessage.mediaURL != nil {
-                conversation.lastMessagePreview = "Attachment"
+                preview = "Attachment"
+            }
+
+            if let displayName = latestMessage.senderDisplayName,
+               conversation.type == .group,
+               let preview,
+               !displayName.isEmpty {
+                conversation.lastMessagePreview = "\(displayName): \(preview)"
             } else {
-                conversation.lastMessagePreview = nil
+                conversation.lastMessagePreview = preview
             }
         } else {
             conversation.lastMessageTimestamp = nil

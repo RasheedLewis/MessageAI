@@ -18,10 +18,12 @@ struct MessageAIApp: App {
         let conversationRepository = ConversationRepository()
         let messageRepository = MessageRepository()
         let listener = MessageListenerService(localDataManager: localDataManager)
+        let userDirectoryService = UserDirectoryService()
         let messageService = MessageService(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,
-            messageRepository: messageRepository
+            messageRepository: messageRepository,
+            userDirectoryService: userDirectoryService
         )
         let currentUserID = AuthenticationService.shared.currentUser?.uid ?? "demo"
         _services = StateObject(wrappedValue: ServiceResolver(
@@ -31,6 +33,7 @@ struct MessageAIApp: App {
             conversationRepository: conversationRepository,
             messageRepository: messageRepository,
             userSearchService: UserSearchService(),
+            userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
             currentUserID: currentUserID
         ))

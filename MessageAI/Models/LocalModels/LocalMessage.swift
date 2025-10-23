@@ -42,6 +42,7 @@ final class LocalMessage {
     var syncDirection: LocalSyncDirection
     var syncAttemptCount: Int
     var lastSyncedAt: Date?
+    var senderDisplayName: String?
 
     var conversation: LocalConversation?
 
@@ -64,7 +65,8 @@ final class LocalMessage {
         syncStatus: LocalSyncStatus = .pending,
         syncDirection: LocalSyncDirection = .upload,
         syncAttemptCount: Int = 0,
-        lastSyncedAt: Date? = nil
+        lastSyncedAt: Date? = nil,
+        senderDisplayName: String? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -83,6 +85,7 @@ final class LocalMessage {
         self.syncDirection = syncDirection
         self.syncAttemptCount = syncAttemptCount
         self.lastSyncedAt = lastSyncedAt
+        self.senderDisplayName = senderDisplayName
     }
 }
 

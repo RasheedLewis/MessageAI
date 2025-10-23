@@ -51,6 +51,7 @@ final class MessageService: MessageServiceProtocol {
         let localDataManager: LocalDataManager
         let conversationRepository: ConversationRepositoryProtocol
         let messageRepository: MessageRepositoryProtocol
+        let userDirectoryService: UserDirectoryServiceProtocol
         let idGenerator: () -> String
         let clock: () -> Date
     }
@@ -61,6 +62,7 @@ init(
     localDataManager: LocalDataManager,
     conversationRepository: ConversationRepositoryProtocol,
     messageRepository: MessageRepositoryProtocol,
+    userDirectoryService: UserDirectoryServiceProtocol,
     idGenerator: @escaping () -> String = { UUID().uuidString },
     clock: @escaping () -> Date = Date.init
 ) {
@@ -68,6 +70,7 @@ init(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,
             messageRepository: messageRepository,
+            userDirectoryService: userDirectoryService,
             idGenerator: idGenerator,
             clock: clock
         )
@@ -206,7 +209,8 @@ init(
             syncStatus: .pending,
             syncDirection: .upload,
             syncAttemptCount: 0,
-            lastSyncedAt: nil
+            lastSyncedAt: nil,
+            senderDisplayName: nil
         )
 
         try dependencies.localDataManager.addMessage(localMessage, toConversationID: message.conversationId)
