@@ -1,39 +1,20 @@
 /**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
+ * Cloud Functions entry point for MessageAI.
  */
 
-const functions = require("firebase-functions");
-const { setGlobalOptions } = functions;
 const admin = require("firebase-admin");
+const functions = require("firebase-functions/v1");
 
 admin.initializeApp();
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
-
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+functions.logger.info("Functions initialized");
 
 exports.sendMessageNotification = functions.firestore
     .document("conversations/{conversationId}/messages/{messageId}")
     .onCreate(async (snapshot, context) => {
         const messageData = snapshot.data();
         if (!messageData) {
-            console.log("[Notification] No message data, exiting");
+            functions.logger.warn("No message data, aborting notification.");
             return null;
         }
 
@@ -41,28 +22,30 @@ exports.sendMessageNotification = functions.firestore
         const senderId = messageData.senderId;
 
         try {
-            const conversationSnap = await admin
-                .firestore()
+            const conversationDoc = await admin.firestore()
                 .collection("conversations")
                 .doc(conversationId)
                 .get();
 
-            if (!conversationSnap.exists) {
-                console.log(`[Notification] Conversation ${conversationId} not found.`);
+            if (!conversationDoc.exists) {
+                functions.logger.warn(
+                    `Conversation ${conversationId} not found.`,
+                );
                 return null;
             }
 
-            const conversation = conversationSnap.data();
-            const participantIds = conversation.participants || [];
-            const recipients = participantIds.filter((id) => id !== senderId);
+            const conversation = conversationDoc.data();
+            const participants = conversation.participants || [];
+            const recipients = participants.filter((id) => id !== senderId);
 
             if (recipients.length === 0) {
-                console.log("[Notification] No recipients for this message.");
+                functions.logger.info(
+                    "No recipients to notify for this message.",
+                );
                 return null;
             }
 
-            const userRefs = recipients.map((uid) => admin
-                .firestore()
+            const userRefs = recipients.map((uid) => admin.firestore()
                 .collection("users")
                 .doc(uid));
 
@@ -80,21 +63,24 @@ exports.sendMessageNotification = functions.firestore
             });
 
             if (tokens.length === 0) {
-                console.log("[Notification] No FCM tokens available for recipients.");
+                functions.logger.info(
+                    "No FCM tokens found for recipients.",
+                );
                 return null;
             }
 
-            const notificationTitle = conversation.title || "New Message";
+            const title = conversation.title || "New Message";
             const hasContent = messageData.content &&
                 messageData.content.trim().length > 0;
-            const bodyText = hasContent ?
-                messageData.content : "Sent you a message";
+            const body = hasContent ?
+                messageData.content :
+                "Sent you a message";
 
             const payload = {
                 tokens,
                 notification: {
-                    title: notificationTitle,
-                    body: bodyText,
+                    title,
+                    body,
                 },
                 data: {
                     conversationId,
@@ -103,14 +89,22 @@ exports.sendMessageNotification = functions.firestore
                 },
             };
 
-            const response = await admin.messaging().sendEachForMulticast(payload);
+            const response = await admin.messaging()
+                .sendEachForMulticast(payload);
             if (response.failureCount > 0) {
-                console.log("[Notification] Some notifications failed", response.responses);
+                functions.logger.warn(
+                    "Some notifications failed",
+                    response.responses,
+                );
             }
 
             return null;
         } catch (error) {
-            console.error("[Notification] Failed to send notification", error);
+            functions.logger.error(
+                "Unable to send notification",
+                error,
+            );
             return null;
         }
     });
+

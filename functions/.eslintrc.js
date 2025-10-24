@@ -15,6 +15,7 @@ module.exports = {
     "prefer-arrow-callback": "error",
     "quotes": ["error", "double", { "allowTemplateLiterals": true }],
     "object-curly-spacing": ["error", "always"],
+    "indent": "off",
   },
   overrides: [
     {
