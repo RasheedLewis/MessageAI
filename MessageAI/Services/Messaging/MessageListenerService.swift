@@ -22,6 +22,9 @@ protocol MessageListenerServiceProtocol: AnyObject {
     func stopMessagesListener(for conversationID: String)
 
     func stopAllMessageListeners()
+
+    func notifyConversationUpdated()
+    func notifyMessageUpdated(conversationID: String)
 }
 
 final class MessageListenerService: MessageListenerServiceProtocol {
@@ -176,6 +179,14 @@ final class MessageListenerService: MessageListenerServiceProtocol {
     func stopAllMessageListeners() {
         messageListeners.values.forEach { $0.remove() }
         messageListeners.removeAll()
+    }
+
+    func notifyConversationUpdated() {
+        conversationUpdatesSubject.send()
+    }
+
+    func notifyMessageUpdated(conversationID: String) {
+        messageUpdatesSubject.send(conversationID)
     }
 
     // MARK: - Conversation Handling

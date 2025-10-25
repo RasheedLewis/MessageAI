@@ -189,6 +189,9 @@ final class MessageCategorizationCoordinator: MessageCategorizationCoordinating 
                         conversationID: message.conversationID,
                         category: localCategory
                     )
+
+                    listenerService.notifyMessageUpdated(conversationID: message.conversationID)
+                    listenerService.notifyConversationUpdated()
                 }
             } catch {
                 #if DEBUG

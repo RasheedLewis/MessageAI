@@ -2191,3 +2191,15 @@ The coordinator currently triggers on new inbound messages, so next steps are ad
 
 ---
 
+_**User (2025-10-25 16:41Z)**_
+
+Now work on 2. **Firestore & Local Sync**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+
+
+---
+
