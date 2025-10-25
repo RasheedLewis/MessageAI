@@ -10,6 +10,7 @@ final class ServiceResolver: ObservableObject {
     @Published var userSearchService: UserSearchServiceProtocol
     @Published var userDirectoryService: UserDirectoryServiceProtocol
     @Published var groupAvatarService: GroupAvatarUploading
+    @Published var aiService: AIServiceProtocol
     @Published var currentUserID: String
 
     init(
@@ -21,6 +22,7 @@ final class ServiceResolver: ObservableObject {
         userSearchService: UserSearchServiceProtocol,
         userDirectoryService: UserDirectoryServiceProtocol,
         groupAvatarService: GroupAvatarUploading,
+        aiService: AIServiceProtocol,
         currentUserID: String
     ) {
         self.localDataManager = localDataManager
@@ -31,6 +33,7 @@ final class ServiceResolver: ObservableObject {
         self.userSearchService = userSearchService
         self.userDirectoryService = userDirectoryService
         self.groupAvatarService = groupAvatarService
+        self.aiService = aiService
         self.currentUserID = currentUserID
     }
 
@@ -56,6 +59,7 @@ final class ServiceResolver: ObservableObject {
             userSearchService: UserSearchService(),
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
+                aiService: AIServiceMock(),
             currentUserID: "demo"
         )
     }
