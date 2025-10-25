@@ -59,7 +59,7 @@ final class ServiceResolver: ObservableObject {
             userSearchService: UserSearchService(),
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
-                aiService: AIServiceMock(),
+            aiService: AIServiceMock(),
             currentUserID: "demo"
         )
     }

@@ -41,6 +41,7 @@ struct MessageAIApp: App {
             userSearchService: UserSearchService(),
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
+            aiService: AIService.shared,
             currentUserID: currentUserID
         ))
 
