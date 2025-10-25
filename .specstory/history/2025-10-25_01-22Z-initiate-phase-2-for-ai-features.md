@@ -1553,3 +1553,1616 @@ All lint errors are cleared. I tweaked the Firebase config helper to avoid optio
 
 ---
 
+_**User (2025-10-25 00:02Z)**_
+
+Now work on 2. **OpenAI Integration**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Outlining OpenAI service implementation plan**</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Extend Firebase functions config helper with OpenAI integration settings and numeric parsing utilities
+- [ ] Implement OpenAI chat completion service with retry and rate limiting
+- [ ] Document OpenAI runtime configuration options in functions README
+
+---
+
+<think><details><summary>Thought Process</summary>**Planning OpenAI integration implementation**
+
+I'm mapping out a comprehensive plan to implement an OpenAI service module with GPT-4 chat completion, retry logic, and rate limiting. This involves extending configuration helpers to parse numeric settings, creating a RateLimiter class enforcing concurrency and requests-per-minute limits, and wrapping OpenAI client calls with timeout and exponential backoff retries, all aligned with the detailed PR tasks and environment constraints.
+**Designing OpenAI service helpers and retry logic**
+
+I'm laying out the structure for the OpenAI service with a robust retry mechanism, timeout handling using AbortController, and a rate limiter class that respects max concurrency and requests-per-minute limits; plus helper functions to build request objects cleanly and to assess retryable errors while incorporating detailed logging for retries.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/config.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/config.js
+@@
+ const CONFIG_KEYS = {
+     OPENAI_API_KEY: "openai.apikey",
+     OPENAI_API_BASE_URL: "openai.api_base_url",
++    OPENAI_CHAT_MODEL: "openai.chat_model",
++    OPENAI_TIMEOUT_MS: "openai.timeout_ms",
++    OPENAI_MAX_RETRIES: "openai.max_retries",
++    OPENAI_RETRY_BASE_DELAY_MS: "openai.retry_base_delay_ms",
++    OPENAI_RATE_LIMIT_RPM: "openai.rate_limit_rpm",
++    OPENAI_RATE_LIMIT_CONCURRENCY: "openai.rate_limit_concurrency",
+ };
+@@
+ const getOptionalConfig = (key, fallback = undefined) => {
+     return getConfigValue(key, fallback);
+ };
++
++const parseNumber = (value) => {
++    if (value === undefined || value === null) {
++        return undefined;
++    }
++    const number = Number(value);
++    if (Number.isNaN(number)) {
++        return undefined;
++    }
++    return number;
++};
++
++const getIntegerConfig = (key, fallback = undefined) => {
++    const value = getOptionalConfig(key, undefined);
++    const parsed = parseNumber(value);
++    if (parsed === undefined) {
++        return fallback;
++    }
++    return Math.trunc(parsed);
++};
++
++const getNumberConfig = (key, fallback = undefined) => {
++    const parsed = parseNumber(getOptionalConfig(key, undefined));
++    if (parsed === undefined) {
++        return fallback;
++    }
++    return parsed;
++};
+ 
+ module.exports = {
+     CONFIG_KEYS,
+     getConfigValue,
+     getRequiredConfig,
+     getOptionalConfig,
++    getIntegerConfig,
++    getNumberConfig,
+ };
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Extend Firebase functions config helper with OpenAI integration settings and numeric parsing utilities
+- [-] Implement OpenAI chat completion service with retry and rate limiting
+- [ ] Document OpenAI runtime configuration options in functions README
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/retry.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: src/utils/retry.js
++const wait = (ms) => {
++    return new Promise((resolve) => {
++        setTimeout(resolve, ms);
++    });
++};
++
++const withRetry = async (
++    operation,
++    {
++        retries = 3,
++        baseDelayMs = 200,
++        multiplier = 2,
++        shouldRetry = () => true,
++    } = {}
++) => {
++    let attempt = 0;
++    let lastError;
++
++    while (attempt <= retries) {
++        try {
++            return await operation(attempt);
++        } catch (error) {
++            lastError = error;
++            if (!shouldRetry(error, attempt) || attempt === retries) {
++                throw error;
++            }
++
++            const delay = baseDelayMs * Math.pow(multiplier, attempt);
++            await wait(delay);
++            attempt += 1;
++        }
++    }
++
++    throw lastError;
++};
++
++module.exports = {
++    withRetry,
++};
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: src/utils/token-bucket.js
++class TokenBucket {
++    constructor({ tokensPerInterval, intervalMs, maxTokens }) {
++        this.tokensPerInterval = tokensPerInterval;
++        this.intervalMs = intervalMs;
++        this.maxTokens = maxTokens ?? tokensPerInterval;
++        this.availableTokens = this.maxTokens;
++        this.lastRefill = Date.now();
++    }
++
++    refill() {
++        const now = Date.now();
++        const elapsed = now - this.lastRefill;
++        if (elapsed <= 0) {
++            return;
++        }
++
++        const tokensToAdd = (elapsed / this.intervalMs) * this.tokensPerInterval;
++        this.availableTokens = Math.min(
++            this.maxTokens,
++            this.availableTokens + tokensToAdd
++        );
++        this.lastRefill = now;
++    }
++
++    async removeToken(timeoutMs = 1000) {
++        const start = Date.now();
++        while (Date.now() - start < timeoutMs) {
++            this.refill();
++            if (this.availableTokens >= 1) {
++                this.availableTokens -= 1;
++                return true;
++            }
++
++            await new Promise((resolve) => setTimeout(resolve, 50));
++        }
++        return false;
++    }
++}
++
++module.exports = {
++    TokenBucket,
++};
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: src/services/openai-service.js
++const {
++    getRequiredConfig,
++    getOptionalConfig,
++    getIntegerConfig,
++    getNumberConfig,
++    CONFIG_KEYS,
++} = require("../config");
++const { getClient } = require("../openai-client");
++const { withRetry } = require("../utils/retry");
++const { TokenBucket } = require("../utils/token-bucket");
++const { logInfo, logWarn } = require("../logger");
++
++const DEFAULT_MODEL = "gpt-4o-mini";
++const DEFAULT_TIMEOUT_MS = 15000;
++const DEFAULT_MAX_RETRIES = 3;
++const DEFAULT_RETRY_BASE_DELAY_MS = 250;
++const DEFAULT_RATE_LIMIT_RPM = 60;
++const DEFAULT_RATE_LIMIT_CONCURRENCY = 5;
++
++let rateLimiter;
++
++const ensureRateLimiter = () => {
++    if (rateLimiter) {
++        return rateLimiter;
++    }
++
++    const rpm = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_RATE_LIMIT_RPM,
++        DEFAULT_RATE_LIMIT_RPM
++    );
++    const concurrency = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_RATE_LIMIT_CONCURRENCY,
++        DEFAULT_RATE_LIMIT_CONCURRENCY
++    );
++
++    rateLimiter = {
++        rpmBucket: new TokenBucket({
++            tokensPerInterval: rpm,
++            intervalMs: 60000,
++            maxTokens: rpm,
++        }),
++        concurrencyBucket: new TokenBucket({
++            tokensPerInterval: concurrency,
++            intervalMs: 1000,
++            maxTokens: concurrency,
++        }),
++    };
++
++    return rateLimiter;
++};
++
++const runWithRateLimits = async (operation) => {
++    const limiter = ensureRateLimiter();
++    const rpmAcquired = await limiter.rpmBucket.removeToken(2000);
++    if (!rpmAcquired) {
++        throw new Error("Rate limit (RPM) exceeded for OpenAI requests");
++    }
++
++    const concurrencyAcquired = await limiter.concurrencyBucket.removeToken(2000);
++    if (!concurrencyAcquired) {
++        throw new Error("Rate limit (concurrency) exceeded for OpenAI requests");
++    }
++
++    try {
++        return await operation();
++    } finally {
++        limiter.concurrencyBucket.availableTokens = Math.min(
++            limiter.concurrencyBucket.availableTokens + 1,
++            limiter.concurrencyBucket.maxTokens
++        );
++    }
++};
++
++const shouldRetry = (error) => {
++    if (!error || !error.status) {
++        return false;
++    }
++    const retryStatusCodes = [408, 429, 500, 502, 503, 504];
++    return retryStatusCodes.includes(error.status);
++};
++
++const buildChatPayload = ({
++    messages,
++    model,
++    temperature,
++    maxTokens,
++    responseFormat,
++    metadata,
++}) => {
++    const payload = {
++        model: model || getOptionalConfig(
++            CONFIG_KEYS.OPENAI_CHAT_MODEL,
++            DEFAULT_MODEL
++        ),
++        messages,
++    };
++
++    if (temperature !== undefined) {
++        payload.temperature = temperature;
++    }
++    if (maxTokens !== undefined) {
++        payload.max_tokens = maxTokens;
++    }
++    if (responseFormat) {
++        payload.response_format = responseFormat;
++    }
++    if (metadata) {
++        payload.metadata = metadata;
++    }
++
++    return payload;
++};
++
++const chatCompletion = async (options) => {
++    const client = getClient();
++    const timeoutMs = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_TIMEOUT_MS,
++        DEFAULT_TIMEOUT_MS
++    );
++    const maxRetries = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_MAX_RETRIES,
++        DEFAULT_MAX_RETRIES
++    );
++    const baseDelayMs = getNumberConfig(
++        CONFIG_KEYS.OPENAI_RETRY_BASE_DELAY_MS,
++        DEFAULT_RETRY_BASE_DELAY_MS
++    );
++
++    return runWithRateLimits(() => withRetry(
++        async (attempt) => {
++            if (attempt > 0) {
++                logWarn("Retrying OpenAI chat completion", { attempt });
++            }
++            const payload = buildChatPayload(options);
++
++            const controller = new AbortController();
++            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
++
++            try {
++                const response = await client.chat.completions.create(
++                    payload,
++                    {
++                        signal: controller.signal,
++                    }
++                );
++                logInfo("OpenAI chat completion success", {
++                    model: payload.model,
++                });
++                return response;
++            } finally {
++                clearTimeout(timeoutId);
++            }
++        },
++        {
++            retries: maxRetries,
++            baseDelayMs,
++            shouldRetry,
++        }
++    ));
++};
++
++module.exports = {
++    chatCompletion,
++    DEFAULT_MODEL,
++};
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Improving token bucket concurrency handling**
+
+I'll add a releaseToken method to the TokenBucket class to manage token releases properly instead of directly manipulating properties. I’m also double-checking retry logic and concurrency bucket updates to ensure they're robust and updating related config parsing, client, and documentation accordingly.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-    async removeToken(timeoutMs = 1000) {
++    async removeToken(timeoutMs = 1000) {
+         const start = Date.now();
+         while (Date.now() - start < timeoutMs) {
+             this.refill();
+             if (this.availableTokens >= 1) {
+                 this.availableTokens -= 1;
+                 return true;
+             }
+ 
+             await new Promise((resolve) => setTimeout(resolve, 50));
+         }
+         return false;
+     }
++
++    releaseToken() {
++        this.availableTokens = Math.min(
++            this.availableTokens + 1,
++            this.maxTokens
++        );
++    }
+ }
+ 
+ module.exports = {
+     TokenBucket,
+ };
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    try {
+-        return await operation();
+-    } finally {
+-        limiter.concurrencyBucket.availableTokens = Math.min(
+-            limiter.concurrencyBucket.availableTokens + 1,
+-            limiter.concurrencyBucket.maxTokens
+-        );
+-    }
++    try {
++        return await operation();
++    } finally {
++        limiter.concurrencyBucket.releaseToken();
++    }
+ };
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Extend Firebase functions config helper with OpenAI integration settings and numeric parsing utilities
+- [x] Implement OpenAI chat completion service with retry and rate limiting
+- [-] Document OpenAI runtime configuration options in functions README
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/README.md</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: README.md
+@@
+ ## Environment Configuration
+ 
+ Sensitive configuration values are managed via `firebase functions:config:set`.
+ 
+ ### OpenAI Credentials
+@@
+ firebase functions:config:set \
+   openai.apikey="YOUR_OPENAI_API_KEY" \
+-  openai.api_base_url="https://api.openai.com/v1" # optional override
++  openai.api_base_url="https://api.openai.com/v1" \ # optional override
++  openai.chat_model="gpt-4o-mini" \                # optional override
++  openai.timeout_ms="15000" \                       # optional override
++  openai.max_retries="3" \                          # optional override
++  openai.retry_base_delay_ms="250" \                # optional override
++  openai.rate_limit_rpm="60" \                      # optional override
++  openai.rate_limit_concurrency="5"                 # optional override
+@@
+-- `openai.api_base_url` (optional): Custom base URL if using a proxy or Azure instance.
++- `openai.api_base_url` (optional): Custom base URL if using a proxy or Azure instance.
++- `openai.chat_model` (optional): Preferred Chat Completions model (default `gpt-4o-mini`).
++- `openai.timeout_ms` (optional): Request timeout in milliseconds (default `15000`).
++- `openai.max_retries` (optional): Number of retry attempts for transient errors (default `3`).
++- `openai.retry_base_delay_ms` (optional): Base delay in milliseconds for exponential backoff (default `250`).
++- `openai.rate_limit_rpm` (optional): Rate limit for requests per minute (default `60`).
++- `openai.rate_limit_concurrency` (optional): Concurrent OpenAI requests (default `5`).
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Extend Firebase functions config helper with OpenAI integration settings and numeric parsing utilities
+- [x] Implement OpenAI chat completion service with retry and rate limiting
+- [x] Document OpenAI runtime configuration options in functions README
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing to run lint**</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+    2:5   error  'getRequiredConfig' is assigned a value but never used  no-unused-vars
+   29:31  error  Missing trailing comma                                  comma-dangle
+   33:39  error  Missing trailing comma                                  comma-dangle
+   59:1   error  This line has a length of 82. Maximum allowed is 80     max-len
+   61:1   error  This line has a length of 81. Maximum allowed is 80     max-len
+   90:26  error  Missing trailing comma                                  comma-dangle
+  115:27  error  Missing trailing comma                                  comma-dangle
+  119:28  error  Missing trailing comma                                  comma-dangle
+  123:36  error  Missing trailing comma                                  comma-dangle
+  141:22  error  Missing trailing comma                                  comma-dangle
+  155:10  error  Missing trailing comma                                  comma-dangle
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/retry.js
+  14:11  error  Missing trailing comma  comma-dangle
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+  5:37  error  Parsing error: Unexpected token ?
+
+✖ 13 problems (13 errors, 0 warnings)
+  9 errors and 0 warnings potentially fixable with the `--fix` option.
+
+
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-class TokenBucket {
+-    constructor({ tokensPerInterval, intervalMs, maxTokens }) {
++class TokenBucket {
++    constructor({ tokensPerInterval, intervalMs, maxTokens }) {
+         this.tokensPerInterval = tokensPerInterval;
+         this.intervalMs = intervalMs;
+-        this.maxTokens = maxTokens ?? tokensPerInterval;
++        this.maxTokens = maxTokens !== undefined ? maxTokens : tokensPerInterval;
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/retry.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/retry.js
+@@
+-    {
+-        retries = 3,
+-        baseDelayMs = 200,
+-        multiplier = 2,
+-        shouldRetry = () => true,
+-    } = {}
++    {
++        retries = 3,
++        baseDelayMs = 200,
++        multiplier = 2,
++        shouldRetry = () => true,
++    } = {}
+ ) => {
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/retry.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/retry.js
+@@
+-        shouldRetry = () => true,
+-    } = {}
++        shouldRetry = () => true,
++    } = {},
+ ) => {
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const rpm = getIntegerConfig(
+-        CONFIG_KEYS.OPENAI_RATE_LIMIT_RPM,
+-        DEFAULT_RATE_LIMIT_RPM
+-    );
+-    const concurrency = getIntegerConfig(
+-        CONFIG_KEYS.OPENAI_RATE_LIMIT_CONCURRENCY,
+-        DEFAULT_RATE_LIMIT_CONCURRENCY
+-    );
++    const rpm = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_RATE_LIMIT_RPM,
++        DEFAULT_RATE_LIMIT_RPM,
++    );
++    const concurrency = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_RATE_LIMIT_CONCURRENCY,
++        DEFAULT_RATE_LIMIT_CONCURRENCY,
++    );
+@@
+-        rpmBucket: new TokenBucket({
+-            tokensPerInterval: rpm,
+-            intervalMs: 60000,
+-            maxTokens: rpm,
+-        }),
+-        concurrencyBucket: new TokenBucket({
+-            tokensPerInterval: concurrency,
+-            intervalMs: 1000,
+-            maxTokens: concurrency,
+-        }),
++        rpmBucket: new TokenBucket({
++            tokensPerInterval: rpm,
++            intervalMs: 60000,
++            maxTokens: rpm,
++        }),
++        concurrencyBucket: new TokenBucket({
++            tokensPerInterval: concurrency,
++            intervalMs: 1000,
++            maxTokens: concurrency,
++        }),
+@@
+-    const concurrencyAcquired = await limiter.concurrencyBucket.removeToken(2000);
++    const concurrencyAcquired = await limiter.concurrencyBucket.removeToken(2000);
+@@
+-    const payload = {
+-        model: model || getOptionalConfig(
+-            CONFIG_KEYS.OPENAI_CHAT_MODEL,
+-            DEFAULT_MODEL
+-        ),
+-        messages,
+-    };
++    const payload = {
++        model: model || getOptionalConfig(
++            CONFIG_KEYS.OPENAI_CHAT_MODEL,
++            DEFAULT_MODEL,
++        ),
++        messages,
++    };
+@@
+-    const timeoutMs = getIntegerConfig(
+-        CONFIG_KEYS.OPENAI_TIMEOUT_MS,
+-        DEFAULT_TIMEOUT_MS
+-    );
+-    const maxRetries = getIntegerConfig(
+-        CONFIG_KEYS.OPENAI_MAX_RETRIES,
+-        DEFAULT_MAX_RETRIES
+-    );
+-    const baseDelayMs = getNumberConfig(
+-        CONFIG_KEYS.OPENAI_RETRY_BASE_DELAY_MS,
+-        DEFAULT_RETRY_BASE_DELAY_MS
+-    );
++    const timeoutMs = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_TIMEOUT_MS,
++        DEFAULT_TIMEOUT_MS,
++    );
++    const maxRetries = getIntegerConfig(
++        CONFIG_KEYS.OPENAI_MAX_RETRIES,
++        DEFAULT_MAX_RETRIES,
++    );
++    const baseDelayMs = getNumberConfig(
++        CONFIG_KEYS.OPENAI_RETRY_BASE_DELAY_MS,
++        DEFAULT_RETRY_BASE_DELAY_MS,
++    );
+@@
+-                const response = await client.chat.completions.create(
+-                    payload,
+-                    {
+-                        signal: controller.signal,
+-                    }
+-                );
++                const response = await client.chat.completions.create(
++                    payload,
++                    {
++                        signal: controller.signal,
++                    },
++                );
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    if (maxTokens !== undefined) {
+-        payload.max_tokens = maxTokens;
++    if (maxTokens !== undefined) {
++        payload.max_tokens = maxTokens;
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-                logInfo("OpenAI chat completion success", {
+-                    model: payload.model,
+-                });
++                logInfo("OpenAI chat completion success", {
++                    model: payload.model,
++                });
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-                logInfo("OpenAI chat completion success", {
+-                    model: payload.model,
+-                });
++                logInfo("OpenAI chat completion success", {
++                    model: payload.model,
++                });
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Cleaning up unused imports and formatting code**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-const {
+-    getRequiredConfig,
+-    getOptionalConfig,
++const {
++    getOptionalConfig,
+     getIntegerConfig,
+     getNumberConfig,
+     CONFIG_KEYS,
+ } = require("../config");
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+   58:1   error  This line has a length of 82. Maximum allowed is 80  max-len
+   60:1   error  This line has a length of 81. Maximum allowed is 80  max-len
+  154:10  error  Missing trailing comma                               comma-dangle
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+   1:1   error  Missing JSDoc comment                                require-jsdoc
+   2:16  error  Missing JSDoc comment                                require-jsdoc
+   5:1   error  This line has a length of 81. Maximum allowed is 80  max-len
+  10:11  error  Missing JSDoc comment                                require-jsdoc
+  17:1   error  This line has a length of 81. Maximum allowed is 80  max-len
+  20:47  error  Missing trailing comma                               comma-dangle
+  25:22  error  Missing JSDoc comment                                require-jsdoc
+  39:17  error  Missing JSDoc comment                                require-jsdoc
+  42:27  error  Missing trailing comma                               comma-dangle
+
+✖ 12 problems (12 errors, 0 warnings)
+  3 errors and 0 warnings potentially fixable with the `--fix` option.
+
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing code style fixes**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter.concurrencyBucket.removeToken(2000);
++    const concurrencyAcquired = await limiter.concurrencyBucket
++        .removeToken(2000);
+@@
+-        {
+-            retries: maxRetries,
+-            baseDelayMs,
+-            shouldRetry,
+-        }
++        {
++            retries: maxRetries,
++            baseDelayMs,
++            shouldRetry,
++        },
+     ));
+ };
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-class TokenBucket {
+-    constructor({ tokensPerInterval, intervalMs, maxTokens }) {
++/**
++ * Simple token bucket implementation for rate limiting.
++ */
++class TokenBucket {
++    /**
++     * @param {Object} params Bucket configuration.
++     * @param {number} params.tokensPerInterval Tokens added per interval.
++     * @param {number} params.intervalMs Interval duration in milliseconds.
++     * @param {number=} params.maxTokens Maximum tokens the bucket can hold.
++     */
++    constructor({ tokensPerInterval, intervalMs, maxTokens }) {
+         this.tokensPerInterval = tokensPerInterval;
+         this.intervalMs = intervalMs;
+         this.maxTokens = maxTokens !== undefined ? maxTokens : tokensPerInterval;
+         this.availableTokens = this.maxTokens;
+         this.lastRefill = Date.now();
+@@
+-    refill() {
++    /**
++     * Refill tokens based on elapsed time.
++     */
++    refill() {
+         const now = Date.now();
+         const elapsed = now - this.lastRefill;
+         if (elapsed <= 0) {
+             return;
+         }
+@@
+-    async removeToken(timeoutMs = 1000) {
++    /**
++     * Attempt to remove a token. Waits until timeout if necessary.
++     * @param {number} timeoutMs Timeout in milliseconds.
++     * @return {Promise<boolean>} Whether a token was acquired.
++     */
++    async removeToken(timeoutMs = 1000) {
+         const start = Date.now();
+         while (Date.now() - start < timeoutMs) {
+             this.refill();
+             if (this.availableTokens >= 1) {
+                 this.availableTokens -= 1;
+@@
+-    releaseToken() {
++    /**
++     * Release a token back to the bucket.
++     */
++    releaseToken() {
+         this.availableTokens = Math.min(
+             this.availableTokens + 1,
+-            this.maxTokens
++            this.maxTokens,
+         );
+     }
+ }
+ 
+ module.exports = {
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        this.availableTokens = Math.min(
+-            this.maxTokens,
+-            this.availableTokens + tokensToAdd
+-        );
++        this.availableTokens = Math.min(
++            this.maxTokens,
++            this.availableTokens + tokensToAdd,
++        );
+@@
+-            await new Promise((resolve) => setTimeout(resolve, 50));
++            await new Promise((resolve) => setTimeout(resolve, 50));
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-            await new Promise((resolve) => setTimeout(resolve, 50));
++            await new Promise((resolve) => setTimeout(resolve, 50));
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Checking trailing commas and line lengths**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter.concurrencyBucket
+-        .removeToken(2000);
++    const concurrencyAcquired = await limiter.concurrencyBucket
++        .removeToken(2000);
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+  61:1  error  This line has a length of 81. Maximum allowed is 80  max-len
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+  14:1  error  This line has a length of 81. Maximum allowed is 80  max-len
+  29:1  error  This line has a length of 81. Maximum allowed is 80  max-len
+
+✖ 3 problems (3 errors, 0 warnings)
+
+
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter.concurrencyBucket
+-        .removeToken(2000);
++    const concurrencyAcquired = await limiter.concurrencyBucket
++        .removeToken(2000);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter.concurrencyBucket
+-        .removeToken(2000);
++    const concurrencyAcquired = await limiter
++        .concurrencyBucket
++        .removeToken(2000);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        this.maxTokens = maxTokens !== undefined ? maxTokens : tokensPerInterval;
++        const hasMaxTokens = maxTokens !== undefined ? maxTokens : null;
++        this.maxTokens = hasMaxTokens !== null ? hasMaxTokens : tokensPerInterval;
+@@
+-        const tokensToAdd = (elapsed / this.intervalMs) * this.tokensPerInterval;
++        const elapsedRatio = elapsed / this.intervalMs;
++        const tokensToAdd = elapsedRatio * this.tokensPerInterval;
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        const tokensToAdd = elapsedRatio * this.tokensPerInterval;
++        const tokensToAdd = elapsedRatio * this.tokensPerInterval;
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        const hasMaxTokens = maxTokens !== undefined ? maxTokens : null;
+-        this.maxTokens = hasMaxTokens !== null ? hasMaxTokens : tokensPerInterval;
++        const hasMaxTokens = maxTokens !== undefined ? maxTokens : null;
++        this.maxTokens = hasMaxTokens !== null ? hasMaxTokens : tokensPerInterval;
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Refactoring code for line length**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        const hasMaxTokens = maxTokens !== undefined ? maxTokens : null;
+-        this.maxTokens = hasMaxTokens !== null ? hasMaxTokens : tokensPerInterval;
++        let hasMaxTokens = maxTokens;
++        if (hasMaxTokens === undefined || hasMaxTokens === null) {
++            hasMaxTokens = tokensPerInterval;
++        }
++        this.maxTokens = hasMaxTokens;
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        let hasMaxTokens = maxTokens;
+-        if (hasMaxTokens === undefined || hasMaxTokens === null) {
+-            hasMaxTokens = tokensPerInterval;
+-        }
+-        this.maxTokens = hasMaxTokens;
++        this.maxTokens = maxTokens;
++        if (maxTokens === undefined || maxTokens === null) {
++            this.maxTokens = tokensPerInterval;
++        }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter
+-        .concurrencyBucket
+-        .removeToken(2000);
++    const concurrencyAcquired = await limiter
++        .concurrencyBucket
++        .removeToken(2000);
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Improving line length for readability**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+- * @param {number=} params.maxTokens Maximum tokens the bucket can hold.
++ * @param {number=} params.maxTokens Bucket capacity override.
+@@
+-        this.maxTokens = maxTokens;
+-        if (maxTokens === undefined || maxTokens === null) {
+-            this.maxTokens = tokensPerInterval;
+-        }
++        const hasProvidedMax = maxTokens !== undefined && maxTokens !== null;
++        this.maxTokens = hasProvidedMax ? maxTokens : tokensPerInterval;
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter
+-        .concurrencyBucket
+-        .removeToken(2000);
++    const concurrencyAcquired = await limiter
++        .concurrencyBucket
++        .removeToken(2000);
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Refining code for line length limits**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await limiter
+-        .concurrencyBucket
+-        .removeToken(2000);
++    const concurrencyBucket = limiter.concurrencyBucket;
++    const concurrencyAcquired = await concurrencyBucket.removeToken(2000);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+-        const elapsedRatio = elapsed / this.intervalMs;
+-        const tokensToAdd = elapsedRatio * this.tokensPerInterval;
++        const elapsedRatio = elapsed / this.intervalMs;
++        const tokensToAdd = elapsedRatio * this.tokensPerInterval;
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Fixing line length issues**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Addressing linting and line length issues**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const limiter = ensureRateLimiter();
+-    const rpmAcquired = await limiter.rpmBucket.removeToken(2000);
++    const limiter = ensureRateLimiter();
++    const rpmTimeoutMs = 2000;
++    const concurrencyTimeoutMs = 2000;
++
++    const rpmAcquired = await limiter.rpmBucket.removeToken(rpmTimeoutMs);
+@@
+-    const concurrencyBucket = limiter.concurrencyBucket;
+-    const concurrencyAcquired = await concurrencyBucket.removeToken(2000);
++    const concurrencyBucket = limiter.concurrencyBucket;
++    const concurrencyAcquired = await concurrencyBucket
++        .removeToken(concurrencyTimeoutMs);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/utils/token-bucket.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/utils/token-bucket.js
+@@
+- * @param {number=} params.maxTokens Bucket capacity override.
++ * @param {number=} params.maxTokens Bucket capacity override.
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+  65:1  error  This line has a length of 81. Maximum allowed is 80  max-len
+
+✖ 1 problem (1 error, 0 warnings)
+
+
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-        limiter.concurrencyBucket.releaseToken();
++        limiter.concurrencyBucket.releaseToken();
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-        limiter.concurrencyBucket.releaseToken();
++        limiter.concurrencyBucket.releaseToken();
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-        .removeToken(concurrencyTimeoutMs);
++        .removeToken(concurrencyTimeoutMs);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    const concurrencyAcquired = await concurrencyBucket
+-        .removeToken(concurrencyTimeoutMs);
++    const concurrencyAcquired = await concurrencyBucket
++        .removeToken(concurrencyTimeoutMs);
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+/Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js
+  65:1  error  This line has a length of 81. Maximum allowed is 80  max-len
+
+✖ 1 problem (1 error, 0 warnings)
+
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Refactoring error message to fit line limit**</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/services/openai-service.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/services/openai-service.js
+@@
+-    if (!concurrencyAcquired) {
+-        throw new Error("Rate limit (concurrency) exceeded for OpenAI requests");
+-    }
++    if (!concurrencyAcquired) {
++        const concurrencyMessage =
++            "Rate limit (concurrency) exceeded for OpenAI requests";
++        throw new Error(concurrencyMessage);
++    }
+*** End Patch
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+```
+
+---
+
+OpenAI integration is in place:
+
+- `functions/src/services/openai-service.js` adds a chat completion wrapper with configurable model, timeout, retries, exponential backoff (via `withRetry`), and a token-bucket rate limiter. Response logging is tied into `functions.logger`.
+- New utilities `src/utils/retry.js` and `src/utils/token-bucket.js` handle retry logic and rate limiting, now JSDoc-documented and lint-clean.
+- `src/config.js` supports additional OpenAI settings (model, timeouts, retry tuning, rate limits) with numeric parsing helpers.
+- `functions/README.md` documents all `firebase functions:config:set` keys, including optional overrides for model, timeouts, retries, and rate limits.
+
+Lint passes (`npm run lint`), no runtime tests executed.
+
+To validate end-to-end later, wire the service into upcoming Cloud Functions (`analyzeMessage`, `generateResponse`).
+
+---
+
