@@ -34,9 +34,10 @@ struct GroupCreationView: View {
                                 ProgressView()
                             } else {
                                 Text("Create")
-                                    .fontWeight(.semibold)
+                                    .font(.theme.button)
                             }
                         }
+                        .buttonStyle(viewModel.isSaving ? .primaryDisabledThemed : .primaryThemed)
                         .disabled(viewModel.isSaving)
                     }
                 }
@@ -58,6 +59,7 @@ struct GroupCreationView: View {
         Form {
             Section("Group Details") {
                 TextField("Group Name", text: $viewModel.groupName)
+                    .font(.theme.body)
 
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     HStack {
@@ -69,16 +71,13 @@ struct GroupCreationView: View {
                                 .clipShape(Circle())
                         } else {
                             ZStack {
-                                Circle()
-                                    .fill(Color(.systemGray5))
-                                    .frame(width: 44, height: 44)
-                                Image(systemName: "photo")
-                                    .foregroundStyle(.secondary)
+                                ThemedIcon(systemName: "photo", state: .custom(Color.theme.textOnSurface.opacity(0.8), glow: false), size: 20, withContainer: true)
                             }
                         }
 
                         Text(viewModel.groupAvatarImage == nil ? "Add Photo" : "Change Photo")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.theme.textOnSurface)
+                            .font(.theme.bodyMedium)
                     }
                 }
             }
@@ -90,19 +89,18 @@ struct GroupCreationView: View {
                             avatar(for: participant)
                             VStack(alignment: .leading) {
                                 Text(participant.displayName)
-                                    .font(.body)
+                                    .font(.theme.body)
                                 if let email = participant.email {
                                     Text(email)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .font(.theme.caption)
+                                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                                 }
                             }
                             Spacer()
                             Button {
                                 viewModel.removeParticipant(withID: participant.id)
                             } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
+                                ThemedIcon(systemName: "xmark.circle", state: .custom(Color.theme.disabled, glow: false), size: 16)
                             }
                             .buttonStyle(.borderless)
                         }
@@ -118,28 +116,27 @@ struct GroupCreationView: View {
                     HStack {
                         ProgressView()
                         Text("Searching…")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                     }
                 } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
                     Text("No matches found")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                 } else {
                     ForEach(viewModel.searchResults) { result in
                         HStack {
                             avatar(for: result)
                             VStack(alignment: .leading) {
                                 Text(result.displayName)
-                                    .font(.body)
+                                    .font(.theme.body)
                                 if let email = result.email {
                                     Text(email)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .font(.theme.caption)
+                                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                                 }
                             }
                             Spacer()
                             if viewModel.isSelected(result) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(Color.accentColor)
+                                ThemedIcon(systemName: "checkmark.circle", state: .active, size: 16)
                             }
                         }
                         .contentShape(Rectangle())
@@ -154,18 +151,17 @@ struct GroupCreationView: View {
 
     private var searchField: some View {
         HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+            ThemedIcon(systemName: "magnifyingglass", state: .custom(Color.theme.textOnSurface.opacity(0.6), glow: false), size: 14)
             TextField("Search by name or email", text: $viewModel.searchQuery)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
                 .onSubmit { viewModel.searchUsersImmediately() }
+                .font(.theme.body)
             if !viewModel.searchQuery.isEmpty {
                 Button {
                     viewModel.searchQuery = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                    ThemedIcon(systemName: "xmark.circle", state: .custom(Color.theme.textOnSurface.opacity(0.4), glow: false), size: 14)
                 }
                 .buttonStyle(.plain)
             }
@@ -180,18 +176,18 @@ struct GroupCreationView: View {
                         .scaledToFill()
                 } placeholder: {
                     Circle()
-                        .fill(Color(.systemGray5))
+                        .fill(Color.theme.primaryVariant.opacity(0.15))
                         .overlay(
-                            ProgressView()
+                            ThemedIcon(systemName: "photo", state: .inactive, size: 14)
                         )
                 }
             } else {
                 Circle()
-                    .fill(Color(.systemGray5))
+                    .fill(Color.theme.primaryVariant.opacity(0.15))
                     .overlay(
                         Text(initials(from: result.displayName))
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                     )
             }
         }

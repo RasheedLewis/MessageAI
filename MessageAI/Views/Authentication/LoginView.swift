@@ -10,19 +10,15 @@ struct LoginView: View {
         VStack(spacing: 32) {
             Spacer()
             VStack(spacing: 12) {
-                Image(systemName: "message.fill")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 72, height: 72)
-                    .foregroundStyle(.tint)
+                ThemedIcon(systemName: "message", state: .active, size: 48)
 
                 Text("Welcome to MessageAI")
-                    .font(.largeTitle.bold())
+                    .font(.theme.display)
                     .multilineTextAlignment(.center)
 
                 Text("Manage every fan DM effortlessly with AI-powered assistants.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body)
+                    .foregroundStyle(Color.theme.textOnSurface.opacity(0.7))
                     .multilineTextAlignment(.center)
             }
 
@@ -33,12 +29,11 @@ struct LoginView: View {
                     HStack {
                         GoogleGlyph()
                         Text("Continue with Google")
-                            .fontWeight(.semibold)
+                            .font(.theme.button)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.gray.opacity(0.3), lineWidth: 1))
                 }
+                .buttonStyle(viewModel.state == .loading ? .primaryDisabledThemed : .primaryThemed)
                 .disabled(viewModel.state == .loading)
 
                 SignInWithAppleButton(.signIn) { request in
@@ -49,18 +44,33 @@ struct LoginView: View {
                     handleAppleCompletion(result: result)
                 }
                 .frame(height: 50)
-                .disabled(viewModel.state == .loading)
+                .signInWithAppleButtonStyle(.whiteOutline)
+                .opacity(viewModel.state == .loading ? 0.6 : 1)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.theme.secondary.opacity(0.2), lineWidth: viewModel.state == .loading ? 1 : 0)
+                )
+                .allowsHitTesting(viewModel.state != .loading)
             }
 
             if viewModel.state == .loading {
                 ProgressView("Signing in…")
+                    .font(.theme.body)
             }
+
+            Button {
+                // Future enhancement: show AI assistant support sheet
+            } label: {
+                Text("Need a hand? Ask AI")
+            }
+            .buttonStyle(.tertiaryThemed)
+            .padding(.top, 8)
 
             Spacer()
 
             Text("By continuing you agree to our Terms of Service and Privacy Policy.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(.theme.caption)
+                .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
         }
@@ -108,7 +118,7 @@ private struct GoogleGlyph: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 1, x: 0, y: 1)
 
             Text("G")
-                .font(.system(size: 16, weight: .bold))
+                .font(.theme.captionMedium)
                 .foregroundStyle(Color(red: 0.16, green: 0.32, blue: 0.75))
         }
     }

@@ -4,6 +4,8 @@ struct RootView<MainAppView: View>: View {
     @StateObject private var viewModel = AuthenticationViewModel()
     private let mainAppBuilder: () -> MainAppView
 
+    @EnvironmentObject private var notificationCoordinator: NotificationCoordinator
+
     init(mainAppBuilder: @escaping () -> MainAppView) {
         self.mainAppBuilder = mainAppBuilder
     }
@@ -17,6 +19,7 @@ struct RootView<MainAppView: View>: View {
                 ProfileSetupView(viewModel: viewModel)
             case .authenticated:
                 mainAppBuilder()
+                    .environmentObject(notificationCoordinator)
             }
         }
         .animation(.easeInOut, value: viewModel.state)
@@ -31,5 +34,6 @@ extension RootView where MainAppView == ContentView {
 
 #Preview {
     RootView.default
+        .environmentObject(NotificationCoordinator())
 }
 

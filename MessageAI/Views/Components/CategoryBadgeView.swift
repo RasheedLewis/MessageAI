@@ -5,14 +5,17 @@ struct CategoryBadgeView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: iconName)
-                .font(.caption2)
+            ThemedIcon(
+                systemName: iconName,
+                state: .custom(backgroundColor, glow: false),
+                size: 10
+            )
             Text(categoryTitle)
-                .font(.caption.bold())
+                .font(.theme.captionMedium)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(backgroundColor.opacity(0.2))
+        .background(backgroundColor.opacity(0.18))
         .foregroundStyle(backgroundColor)
         .clipShape(Capsule())
     }
@@ -35,30 +38,30 @@ struct CategoryBadgeView: View {
     private var iconName: String {
         switch category {
         case .fan:
-            return "heart.fill"
+            return "heart"
         case .business:
-            return "briefcase.fill"
+            return "briefcase"
         case .spam:
-            return "exclamationmark.triangle.fill"
+            return "exclamationmark.triangle"
         case .urgent:
-            return "bolt.fill"
+            return "bolt"
         case .general:
-            return "bubble.left.fill"
+            return "bubble.left"
         }
     }
 
     private var backgroundColor: Color {
         switch category {
         case .fan:
-            return .green
+            return Color.theme.accent
         case .business:
-            return .blue
+            return Color.theme.secondary
         case .spam:
-            return .gray
+            return Color.theme.disabled
         case .urgent:
-            return .red
+            return Color.theme.error
         case .general:
-            return .purple
+            return Color.theme.primary
         }
     }
 }

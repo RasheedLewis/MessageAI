@@ -7,17 +7,15 @@ struct EmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: systemImage)
-                .font(.system(size: 48))
-                .foregroundStyle(Color.accentColor.opacity(0.6))
+            ThemedIcon(systemName: systemImage, state: .active, size: 42, withContainer: false, showsBorder: false)
 
             Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.theme.headline)
+                .foregroundStyle(Color.theme.textOnPrimary)
 
             Text(message)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.theme.body)
+                .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
         }

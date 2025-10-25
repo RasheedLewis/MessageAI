@@ -5,6 +5,7 @@
 //  Created by Rasheed Lewis on 10/21/25.
 //
 
+import Combine
 import FirebaseCore
 import FirebaseMessaging
 import SwiftUI
@@ -15,6 +16,7 @@ import UIKit
 struct MessageAIApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var services: ServiceResolver
+    private let notificationCoordinator = NotificationCoordinator()
 
     init() {
         FirebaseApp.configure()
@@ -41,19 +43,25 @@ struct MessageAIApp: App {
             groupAvatarService: GroupAvatarService(),
             currentUserID: currentUserID
         ))
+
+        appDelegate.notificationCoordinator = notificationCoordinator
     }
 
     var body: some Scene {
         WindowGroup {
             RootView(mainAppBuilder: { MainTabView(services: services) })
+                .environmentObject(notificationCoordinator)
+                .tint(Color.theme.accent)
         }
     }
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     private let notificationCenter = UNUserNotificationCenter.current()
+    weak var notificationCoordinator: NotificationCoordinator?
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    func application(_ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         notificationCenter.delegate = self
         Messaging.messaging().delegate = self
         requestNotificationAuthorization()
@@ -84,10 +92,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
+        DispatchQueue.main.async {
+            let current = UIApplication.shared.applicationIconBadgeNumber
+            UIApplication.shared.applicationIconBadgeNumber = current + 1
+        }
+        completionHandler([.banner, .sound, .badge])
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        notificationCoordinator?.handleNotificationPayload(response.notification.request.content.userInfo)
         completionHandler()
     }
 }
@@ -103,5 +116,29 @@ extension AppDelegate: MessagingDelegate {
                 print("[Notifications] Failed to save FCM token: \(error.localizedDescription)")
             }
         }
+    }
+}
+
+final class NotificationCoordinator: ObservableObject {
+    @Published var pendingConversationID: String?
+
+    func handleNotificationPayload(_ userInfo: [AnyHashable: Any]) {
+        if let conversationId = userInfo["conversationId"] as? String {
+            DispatchQueue.main.async {
+                self.pendingConversationID = conversationId
+            }
+        }
+        clearAllNotifications()
+    }
+
+    func clearAllNotifications() {
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        DispatchQueue.main.async {
+            UIApplication.shared.applicationIconBadgeNumber = 0
+        }
+    }
+
+    func consumePendingConversation() {
+        pendingConversationID = nil
     }
 }

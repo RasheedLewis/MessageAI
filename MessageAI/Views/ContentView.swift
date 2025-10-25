@@ -5,22 +5,23 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 24) {
                 Text("MessageAI Home")
-                    .font(.largeTitle.bold())
+                    .font(.theme.display)
 
                 Text("The core messaging experience will appear here.")
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body)
+                    .foregroundStyle(Color.theme.textOnSurface.opacity(0.7))
 
                 NavigationLink("Open Conversations") {
                     Text("Conversation list placeholder")
-                        .font(.headline)
+                        .font(.theme.subhead)
                         .padding()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primaryThemed)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
-            .background(Color(.systemGroupedBackground))
+            .background(Color.theme.primary)
         }
     }
 }

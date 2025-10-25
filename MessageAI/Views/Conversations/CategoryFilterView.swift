@@ -27,13 +27,13 @@ struct CategoryFilterView: View {
             }
         } label: {
             Text(title(for: category))
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(isSelected ? .white : .primary)
+                .font(.theme.bodyMedium)
+                .foregroundStyle(isSelected ? Color.theme.textOnPrimary : Color.theme.textOnSurface)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color(.systemGray5))
+                        .fill(isSelected ? Color.theme.secondary : Color.theme.surface.opacity(0.8))
                 )
         }
         .buttonStyle(.plain)

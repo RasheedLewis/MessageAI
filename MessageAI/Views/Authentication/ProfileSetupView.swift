@@ -17,19 +17,19 @@ struct ProfileSetupView: View {
         ScrollView {
             VStack(spacing: 24) {
                 Text("Set up your creator profile")
-                    .font(.largeTitle.bold())
+                    .font(.theme.display)
                     .multilineTextAlignment(.center)
 
                 Text("Let fans know who you are. Add a display name and optional profile photo.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body)
+                    .foregroundStyle(Color.theme.textOnSurface.opacity(0.7))
                     .multilineTextAlignment(.center)
 
                 avatarPicker
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Display Name")
-                        .font(.headline)
+                        .font(.theme.subhead)
 
                     TextField("Your name", text: $viewModel.displayName)
                         .textFieldStyle(.roundedBorder)
@@ -41,13 +41,9 @@ struct ProfileSetupView: View {
                     Task { await saveProfile() }
                 } label: {
                     Text(isSaving ? "Saving…" : "Continue")
-                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(isContinueEnabled ? Color.accentColor : Color.gray.opacity(0.3))
-                        .foregroundStyle(isContinueEnabled ? Color.white : Color.secondary)
-                        .cornerRadius(12)
                 }
+                .buttonStyle(isContinueEnabled ? .primaryThemed : .primaryDisabledThemed)
                 .disabled(!isContinueEnabled)
             }
             .padding(24)
@@ -96,7 +92,7 @@ struct ProfileSetupView: View {
         VStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color.gray.opacity(0.15))
+                    .fill(Color.theme.primaryVariant.opacity(0.12))
                     .frame(width: 120, height: 120)
 
                 if let profileImage {
@@ -106,11 +102,7 @@ struct ProfileSetupView: View {
                         .frame(width: 120, height: 120)
                         .clipShape(Circle())
                 } else {
-                    Image(systemName: "person.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 48, height: 48)
-                        .foregroundStyle(.secondary)
+                    ThemedIcon(systemName: "person", state: .custom(Color.theme.textOnSurface.opacity(0.6), glow: false), size: 32, withContainer: true)
                 }
             }
 
@@ -120,18 +112,20 @@ struct ProfileSetupView: View {
                         showPhotoSettingsAlert = true
                     } label: {
                         Text("Enable Photo Access")
-                            .fontWeight(.semibold)
+                            .font(.theme.bodyMedium)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8).stroke(Color.red))
+                            .background(RoundedRectangle(cornerRadius: 8).stroke(Color.theme.error))
+                            .foregroundStyle(Color.theme.error)
                     }
                 } else {
                     PhotosPicker(selection: $selectedItem, matching: .images) {
                         Text(profileImage == nil ? "Upload Photo" : "Change Photo")
-                            .fontWeight(.semibold)
+                            .font(.theme.bodyMedium)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor))
+                            .background(RoundedRectangle(cornerRadius: 8).stroke(Color.theme.accent))
+                            .foregroundStyle(Color.theme.accent)
                     }
                 }
             }

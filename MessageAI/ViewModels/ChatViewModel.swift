@@ -26,6 +26,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var participantSummary: String = ""
     @Published private(set) var isGroupConversation: Bool = false
     @Published private(set) var participants: [Participant] = []
+    @Published var isTypingAI: Bool = false
 
     private let conversationID: String
     private let localDataManager: LocalDataManager

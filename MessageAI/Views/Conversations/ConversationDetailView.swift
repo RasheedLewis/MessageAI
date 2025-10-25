@@ -12,6 +12,7 @@ struct ConversationDetailView: View {
 #Preview {
     NavigationStack {
         ConversationDetailView(conversationID: "preview", services: ServiceResolver.previewResolver)
+            .environmentObject(NotificationCoordinator())
     }
 }
 

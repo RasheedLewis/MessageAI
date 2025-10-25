@@ -24,7 +24,7 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { viewModel.onAppear() }
         .onDisappear { viewModel.onDisappear() }
-        .background(Color(.systemGroupedBackground))
+        .background(chatBackground)
         .overlay(alignment: .top) {
             if let errorMessage = viewModel.errorMessage {
                 ErrorBanner(message: errorMessage)
@@ -32,18 +32,31 @@ struct ChatView: View {
         }
     }
 
+    private var chatBackground: some View {
+        Color.theme.chatBackground
+            .overlay(
+                RadialGradient(
+                    gradient: Gradient(colors: [Color.black.opacity(0.0), Color.black.opacity(0.35)]),
+                    center: .center,
+                    startRadius: 120,
+                    endRadius: 500
+                )
+            )
+            .ignoresSafeArea()
+    }
+
     private var header: some View {
         VStack(spacing: 4) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.conversationTitle)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                        .font(.theme.subhead)
+                        .foregroundStyle(Color.theme.textOnPrimary)
 
                     if !viewModel.participantSummary.isEmpty {
                         Text(viewModel.participantSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.theme.caption)
+                            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
                     }
                 }
 
@@ -53,8 +66,7 @@ struct ChatView: View {
                     NavigationLink {
                         GroupInfoView(participants: viewModel.participants)
                     } label: {
-                        Image(systemName: "person.3.fill")
-                            .imageScale(.medium)
+                        ThemedIcon(systemName: "person.3", state: .active, size: 18)
                     }
                     .buttonStyle(.plain)
                 }
@@ -63,7 +75,7 @@ struct ChatView: View {
             .padding(.top, 16)
             .padding(.bottom, 8)
         }
-        .background(Color(.systemBackground))
+        .background(Color.theme.primaryVariant)
     }
 
     private var messagesList: some View {
@@ -75,6 +87,11 @@ struct ChatView: View {
                             .id(message.id)
                     }
 
+                    if viewModel.isTypingAI {
+                        TypingIndicatorView()
+                            .padding(.top, 8)
+                    }
+
                     Color.clear
                         .frame(height: 1)
                         .id(bottomID)
@@ -82,7 +99,7 @@ struct ChatView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 12)
             }
-            .background(Color(.systemBackground))
+            .background(Color.theme.primaryVariant)
             .onChange(of: viewModel.messages.count) { _, _ in
                 withAnimation {
                     proxy.scrollTo(bottomID, anchor: .bottom)
@@ -103,12 +120,12 @@ private struct ErrorBanner: View {
 
     var body: some View {
         Text(message)
-            .font(.footnote.bold())
+            .font(.theme.captionMedium)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(Color.red.opacity(0.85))
-            .foregroundColor(.white)
+            .background(Color.theme.error)
+            .foregroundColor(Color.theme.textOnPrimary)
             .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
@@ -133,27 +150,49 @@ private struct MessageRowView: View {
         VStack(alignment: message.isCurrentUser ? .trailing : .leading, spacing: 4) {
             if !message.isCurrentUser, let senderName = message.senderName {
                 Text(senderName)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                        .font(.theme.captionMedium)
+                    .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
             }
 
             Text(message.content)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(message.isCurrentUser ? Color.accentColor : Color(.secondarySystemBackground))
-                .foregroundColor(message.isCurrentUser ? .white : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .foregroundColor(Color.theme.textOnPrimary)
+                .background(bubbleBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: message.isCurrentUser ? Color.theme.secondary.opacity(0.35) : Color.theme.accent.opacity(0.45), radius: message.isCurrentUser ? 10 : 14, x: 0, y: 6)
 
             HStack(spacing: 4) {
                 Text(message.timestamp, style: .time)
                 if message.isCurrentUser {
-                    Image(systemName: iconName)
+                    ThemedIcon(systemName: iconName, state: .inactive, size: 10)
                 }
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+            .font(.theme.caption)
+            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
             .padding(.horizontal, 4)
         }
+    }
+
+    private var bubbleBackground: some View {
+        let gradient = LinearGradient(
+            gradient: Gradient(colors: message.isCurrentUser ? [Color.theme.userBubbleStart, Color.theme.userBubbleEnd] : [Color.theme.aiBubbleStart, Color.theme.aiBubbleEnd]),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        return RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(gradient)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(message.isCurrentUser ? 0.08 : 0.2), lineWidth: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.theme.accent.opacity(message.isCurrentUser ? 0.0 : 0.35), lineWidth: message.isCurrentUser ? 0 : 2)
+                    .blur(radius: 8)
+                    .opacity(message.isCurrentUser ? 0 : 1)
+            )
     }
 
     private var iconName: String {
@@ -165,7 +204,7 @@ private struct MessageRowView: View {
         case .delivered:
             return "checkmark.circle"
         case .read:
-            return "checkmark.circle.fill"
+            return "checkmark.circle"
         case .failed:
             return "exclamationmark.triangle"
         }
@@ -179,14 +218,15 @@ private struct GroupInfoView: View {
         List(participants) { participant in
             HStack {
                 Circle()
-                    .fill(Color(.systemGray5))
+                    .fill(Color.theme.primaryVariant.opacity(0.15))
                     .frame(width: 32, height: 32)
                     .overlay(
                         Text(initials(for: participant.displayName))
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                            .font(.theme.captionMedium)
+                            .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
                     )
                 Text(participant.displayName)
+                    .font(.theme.body)
             }
         }
         .navigationTitle("Group Info")
@@ -201,5 +241,6 @@ private struct GroupInfoView: View {
 #Preview {
     let services = ServiceResolver.previewResolver
     ChatView(conversationID: "preview", services: services)
+        .environmentObject(NotificationCoordinator())
 }
 

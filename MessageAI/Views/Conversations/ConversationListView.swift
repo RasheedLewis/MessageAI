@@ -3,6 +3,8 @@ import SwiftUI
 struct ConversationListView: View {
     @StateObject private var viewModel: ConversationListViewModel
     @State private var isPresentingNewConversation = false
+    @EnvironmentObject private var notificationCoordinator: NotificationCoordinator
+    @State private var activeConversationID: String?
 
     init(services: ServiceResolver) {
         _viewModel = StateObject(wrappedValue: ConversationListViewModel(services: services))
@@ -21,7 +23,7 @@ struct ConversationListView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { isPresentingNewConversation = true }) {
-                        Image(systemName: "square.and.pencil")
+                        ThemedIcon(systemName: "square.and.pencil", state: .active, size: 18)
                     }
                 }
             }
@@ -29,12 +31,19 @@ struct ConversationListView: View {
                 GroupCreationView(services: viewModel.services) { conversationID in
                     viewModel.refresh()
                     isPresentingNewConversation = false
+                    navigate(to: conversationID)
                 }
                 .presentationDetents([.medium, .large])
             }
         }
+        .background(Color.theme.primary)
         .onAppear { viewModel.onAppear() }
         .onDisappear { viewModel.onDisappear() }
+        .onReceive(notificationCoordinator.$pendingConversationID) { conversationID in
+            guard let conversationID else { return }
+            navigate(to: conversationID)
+            notificationCoordinator.consumePendingConversation()
+        }
     }
 
     private var listView: some View {
@@ -49,9 +58,14 @@ struct ConversationListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(viewModel.conversations) { conversation in
-                    NavigationLink {
-                        ConversationDetailView(conversationID: conversation.id, services: viewModel.services)
-                    } label: {
+                    NavigationLink(
+                        destination: ConversationDetailView(
+                            conversationID: conversation.id,
+                            services: viewModel.services
+                        ),
+                        tag: conversation.id,
+                        selection: $activeConversationID
+                    ) {
                         ConversationRowView(item: conversation)
                     }
                     .listRowBackground(Color.clear)
@@ -60,11 +74,22 @@ struct ConversationListView: View {
                 .refreshable { viewModel.refresh() }
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.theme.primary)
+        .onAppear {
+            if let pending = notificationCoordinator.pendingConversationID {
+                navigate(to: pending)
+                notificationCoordinator.consumePendingConversation()
+            }
+        }
+    }
+
+    private func navigate(to conversationID: String) {
+        activeConversationID = conversationID
     }
 }
 
 #Preview {
     ConversationListView(services: ServiceResolver.previewResolver)
+        .environmentObject(NotificationCoordinator())
 }
 

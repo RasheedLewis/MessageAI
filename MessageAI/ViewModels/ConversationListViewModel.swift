@@ -150,5 +150,6 @@ final class ConversationListViewModel: ObservableObject {
 
         return nil
     }
+
 }
 

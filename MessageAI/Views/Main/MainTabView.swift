@@ -2,7 +2,9 @@ import SwiftUI
 
 struct MainTabView: View {
     let services: ServiceResolver
+    @EnvironmentObject private var notificationCoordinator: NotificationCoordinator
     @State private var selectedTab: Tab = .conversations
+    @State private var deepLinkConversationID: String?
 
     enum Tab: Hashable {
         case conversations
@@ -14,37 +16,70 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ConversationListView(services: services)
                 .tabItem {
-                    Label("Messages", systemImage: "bubble.left.and.bubble.right.fill")
+                    Label {
+                        Text("Messages")
+                    } icon: {
+                        ThemedIcon(
+                            systemName: "bubble.left.and.bubble.right",
+                            state: selectedTab == .conversations ? .custom(Color.theme.secondary, glow: true) : .inactive,
+                            size: 20,
+                            withContainer: true
+                        )
+                    }
                 }
                 .tag(Tab.conversations)
 
             AssistantPlaceholderView()
                 .tabItem {
-                    Label("Assistant", systemImage: "sparkles")
+                    Label {
+                        Text("Assistant")
+                    } icon: {
+                        ThemedIcon(
+                            systemName: "sparkles",
+                            state: selectedTab == .assistant ? .custom(Color.theme.secondary, glow: true) : .inactive,
+                            size: 20,
+                            withContainer: true
+                        )
+                    }
                 }
                 .tag(Tab.assistant)
 
             SettingsView(onSignOut: AuthenticationViewModel().signOut)
                 .tabItem {
-                    Label("Settings", systemImage: "gearshape")
+                    Label {
+                        Text("Settings")
+                    } icon: {
+                        ThemedIcon(
+                            systemName: "gearshape",
+                            state: selectedTab == .settings ? .custom(Color.theme.secondary, glow: true) : .inactive,
+                            size: 20,
+                            withContainer: true
+                        )
+                    }
                 }
                 .tag(Tab.settings)
         }
+        .tint(Color.theme.secondary)
+        .onReceive(notificationCoordinator.$pendingConversationID) { conversationID in
+            guard let conversationID else { return }
+            deepLinkConversationID = conversationID
+            selectedTab = .conversations
+            notificationCoordinator.consumePendingConversation()
+        }
+        .background(Color.theme.primary)
     }
 }
 
 private struct AssistantPlaceholderView: View {
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "sparkles")
-                .font(.largeTitle)
-                .foregroundStyle(Color.accentColor)
+            ThemedIcon(systemName: "sparkles", state: .active, size: 40)
             Text("AI Assistant workspace in progress")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+                .font(.theme.subhead)
+                .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.theme.primaryVariant)
     }
 }
 
@@ -102,5 +137,6 @@ private struct SettingsView: View {
 
 #Preview {
     MainTabView(services: ServiceResolver.previewResolver)
+        .environmentObject(NotificationCoordinator())
 }
 

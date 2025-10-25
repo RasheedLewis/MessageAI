@@ -10,8 +10,8 @@ struct ConversationRowView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(item.title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                        .font(.theme.subhead)
+                        .foregroundStyle(Color.theme.textOnPrimary)
                         .lineLimit(1)
 
                     if let category = item.aiCategory {
@@ -20,8 +20,8 @@ struct ConversationRowView: View {
                 }
 
                 Text(item.lastMessagePreview ?? "No messages yet")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body)
+                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
                     .lineLimit(2)
             }
 
@@ -30,17 +30,17 @@ struct ConversationRowView: View {
             VStack(alignment: .trailing, spacing: 8) {
                 if let lastTime = item.lastMessageTime {
                     Text(lastTime, style: .time)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
                 }
 
                 if item.unreadCount > 0 {
                     Text("\(item.unreadCount)")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white)
+                        .font(.theme.captionMedium)
+                        .foregroundStyle(Color.theme.textOnPrimary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.accentColor))
+                        .background(Capsule().fill(Color.theme.accent))
                 }
             }
         }
@@ -50,20 +50,20 @@ struct ConversationRowView: View {
     private var avatarView: some View {
         ZStack {
             Circle()
-                .fill(Color(.systemGray5))
+                .fill(Color.theme.surface.opacity(0.9))
                 .frame(width: 48, height: 48)
 
             Text(initials(from: item.title))
-                .font(.headline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.theme.captionMedium)
+                .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
         }
         .overlay(alignment: .bottomTrailing) {
             Circle()
-                .fill(item.isOnline ? Color.green : Color.gray)
+                .fill(item.isOnline ? Color.theme.secondary : Color.theme.disabled)
                 .frame(width: 12, height: 12)
                 .overlay(
                     Circle()
-                        .stroke(Color(.systemBackground), lineWidth: 2)
+                        .stroke(Color.theme.surface, lineWidth: 2)
                 )
                 .offset(x: 4, y: 4)
         }
