@@ -16,10 +16,11 @@ module.exports = {
     "quotes": ["error", "double", { "allowTemplateLiterals": true }],
     "object-curly-spacing": ["error", "always"],
     "indent": "off",
+    "max-len": ["error", { "code": 100, "ignoreComments": true, "ignoreUrls": true }],
   },
   overrides: [
     {
-      files: ["**/*.spec.*"],
+      files: ["**/*.spec.*", "**/*.test.*"],
       env: {
         mocha: true,
       },
