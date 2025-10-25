@@ -8,3 +8,7 @@ exports.analyzeMessage = require(
     "./src/functions/analyze-message",
 );
 
+exports.generateResponse = require(
+    "./src/functions/generate-response",
+);
+

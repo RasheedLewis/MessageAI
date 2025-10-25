@@ -5369,3 +5369,609 @@ Next steps: define an `npm test` script or integrate into CI before deployment.
 
 ---
 
+_**User (2025-10-25 00:02Z)**_
+
+Now work on 4. **Response Generation Function**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Preparing response generation tasks**</details></think>
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [-] Define response generation prompt structure and schema for generateResponse Cloud Function
+- [ ] Implement generateResponse callable function leveraging OpenAI service with voice personalization
+- [ ] Add unit tests covering successful response generation and error handling scenarios
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/index.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: index.js
+@@
+ exports.analyzeMessage = require(
+     "./src/functions/analyze-message",
+ );
++
++exports.generateResponse = require(
++    "./src/functions/generate-response",
++);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/types/response-generation.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: src/types/response-generation.js
++const ToneLevel = {
++    CASUAL: "casual",
++    FRIENDLY: "friendly",
++    PROFESSIONAL: "professional",
++    FORMAL: "formal",
++};
++
++const ResponseFormat = {
++    TEXT: "text",
++    BULLET: "bullet",
++    PARAGRAPH: "paragraph",
++};
++
++module.exports = {
++    ToneLevel,
++    ResponseFormat,
++};
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing generate-response function with tests**
+
+I’m outlining a detailed plan to build a new generate-response function that crafts replies using creator voice profiles and conversation history. I’ll create a system prompt embedding voice samples and guidelines, handle response JSON parsing with strict sanitization, and add robust error handling and tests. The implementation will live in a new file with matching unit tests, focusing on reliable inputs, sanitized outputs, and updating TODO status accordingly.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/functions/generate-response.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: src/functions/generate-response.js
++const { functions } = require("../app");
++const { chatCompletion, DEFAULT_MODEL } = require(
++    "../services/openai-service",
++);
++const { ToneLevel, ResponseFormat } = require(
++    "../types/response-generation",
++);
++const { logError } = require("../logger");
++
++const FALLBACK_TONE = ToneLevel.FRIENDLY;
++const FALLBACK_FORMAT = ResponseFormat.PARAGRAPH;
++const MAX_HISTORY_COUNT = 8;
++
++const buildSystemPrompt = (creatorProfile = {}) => {
++    const name = creatorProfile.displayName || "Creator";
++    const persona = creatorProfile.persona || "Engaging content creator";
++    const tone = creatorProfile.defaultTone || FALLBACK_TONE;
++    const styleGuidelines = Array.isArray(creatorProfile.styleGuidelines) ?
++        creatorProfile.styleGuidelines :
++        [];
++    const voiceSamples = Array.isArray(creatorProfile.voiceSamples) ?
++        creatorProfile.voiceSamples :
++        [];
++    const signature = creatorProfile.signature || "";
++
++    const styleSection = styleGuidelines.length > 0 ?
++        `Style Guidelines:\n- ${styleGuidelines.join("\n- ")}` :
++        "Style Guidelines: Maintain authenticity and warmth.";
++
++    const samplesSection = voiceSamples.length > 0 ?
++        `Voice Samples:\n${voiceSamples.map((sample, index) => {
++            return `${index + 1}. ${sample}`;
++        }).join("\n")}` :
++        "Voice Samples:\n1. Hey hey! Thanks so much for reaching out—this totally made my day!";
++
++    const signatureSection = signature ?
++        `Signature Close:
++${signature}` :
++        "";
++
++    return [
++        `${name} Persona: ${persona}.`,
++        `Default Tone: ${tone}.`,
++        styleSection,
++        samplesSection,
++        signatureSection,
++        "",
++        "You must respond with JSON matching strictly the schema:",
++        "type GeneratedReply = {",
++        "  reply: string;",
++        "  tone: \"casual\" | \"friendly\" | \"professional\" | \"formal\";",
++        "  format: \"text\" | \"bullet\" | \"paragraph\";",
++        "  reasoning: string;",
++        "  followUpQuestions: string[];",
++        "  suggestedNextActions: string[];",
++        "};",
++        "",
++        "Constraints:",
++        "- reply must mirror the creator voice and remain concise (<= 200 words).",
++        "- preserve authenticity; do not sound like a robot.",
++        "- include emojis only if voice samples frequently use them.",
++        "- do not invent facts or commit to unavailable things.",
++        "- tone must align with user request urgency and relationship.",
++        "- reasoning is a brief explanation for internal analytics (not shown).",
++        "- followUpQuestions should capture any clarification needs or opportunities.",
++        "- suggestedNextActions should be actionable bullet ideas for the creator.",
++        "- Always output valid JSON with double quotes and no trailing comments.",
++    ].join("\n");
++};
++
++const formatConversationHistory = (history = []) => {
++    if (!Array.isArray(history) || history.length === 0) {
++        return "No prior conversation history provided.";
++    }
++
++    const trimmed = history.slice(-MAX_HISTORY_COUNT);
++    const formatted = trimmed.map((entry, index) => {
++        const speaker = entry && entry.speaker ? entry.speaker : `Speaker ${index + 1}`;
++        const content = entry && entry.content ? entry.content : "";
++        return `${speaker}: ${content}`;
++    });
++
++    return formatted.join("\n\n");
++};
++
++const buildMessages = ({
++    latestMessage,
++    conversationHistory,
++    creatorProfile,
++    responsePreferences = {},
++}) => {
++    const systemContent = buildSystemPrompt(creatorProfile);
++    const historyString = formatConversationHistory(conversationHistory);
++
++    const preferredTone = responsePreferences.tone || creatorProfile.defaultTone;
++    const preferredFormat = responsePreferences.format || creatorProfile.preferredFormat;
++
++    const preferenceBlock = {
++        preferredTone,
++        preferredFormat,
++        includeSignature: Boolean(responsePreferences.includeSignature ||
++            creatorProfile.includeSignature),
++        additionalNotes: responsePreferences.notes || "",
++    };
++
++    return [
++        {
++            role: "system",
++            content: systemContent,
++        },
++        {
++            role: "user",
++            content: JSON.stringify({
++                latestMessage,
++                conversationHistory: historyString,
++                preferences: preferenceBlock,
++            }),
++        },
++    ];
++};
++
++const sanitizeTone = (tone) => {
++    const tones = Object.values(ToneLevel);
++    return tones.indexOf(tone) !== -1 ? tone : FALLBACK_TONE;
++};
++
++const sanitizeFormat = (format) => {
++    const formats = Object.values(ResponseFormat);
++    return formats.indexOf(format) !== -1 ? format : FALLBACK_FORMAT;
++};
++
++const sanitizeArray = (value) => {
++    return Array.isArray(value) ? value : [];
++};
++
++const parseResponse = (raw) => {
++    try {
++        const parsed = JSON.parse(raw);
++        const reply = typeof parsed.reply === "string" ? parsed.reply : "";
++        const tone = sanitizeTone(parsed.tone);
++        const format = sanitizeFormat(parsed.format);
++        const reasoning = typeof parsed.reasoning === "string" ? parsed.reasoning : "";
++        const followUpQuestions = sanitizeArray(parsed.followUpQuestions);
++        const suggestedNextActions = sanitizeArray(parsed.suggestedNextActions);
++
++        return {
++            reply,
++            tone,
++            format,
++            reasoning,
++            followUpQuestions,
++            suggestedNextActions,
++        };
++    } catch (error) {
++        throw new Error("Failed to parse response JSON");
++    }
++};
++
++module.exports = functions.https.onCall(async (data, context) => {
++    if (!context.auth) {
++        throw new functions.https.HttpsError(
++            "unauthenticated",
++            "Authentication required to generate response",
++        );
++    }
++
++    const latestMessage = data && data.message ? data.message : null;
++    if (!latestMessage || typeof latestMessage !== "string") {
++        throw new functions.https.HttpsError(
++            "invalid-argument",
++            "Message text is required for response generation",
++        );
++    }
++
++    const conversationHistory = data && data.conversationHistory ?
++        data.conversationHistory :
++        [];
++    const creatorProfile = data && data.creatorProfile ? data.creatorProfile : {};
++    const responsePreferences = data && data.responsePreferences ?
++        data.responsePreferences :
++        {};
++
++    try {
++        const response = await chatCompletion({
++            model: DEFAULT_MODEL,
++            temperature: 0.6,
++            messages: buildMessages({
++                latestMessage,
++                conversationHistory,
++                creatorProfile,
++                responsePreferences,
++            }),
++        });
++
++        const choices = Array.isArray(response.choices) ? response.choices : [];
++        let content = null;
++        if (choices.length > 0) {
++            const firstChoice = choices[0] || {};
++            const messagePayload = firstChoice.message || {};
++            if (typeof messagePayload.content === "string") {
++                content = messagePayload.content;
++            }
++        }
++
++        if (!content) {
++            throw new Error("OpenAI returned empty response");
++        }
++
++        return parseResponse(content);
++    } catch (error) {
++        logError("generateResponse failed", error);
++        throw new functions.https.HttpsError(
++            "internal",
++            "Failed to generate response",
++        );
++    }
++});
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define response generation prompt structure and schema for generateResponse Cloud Function
+- [-] Implement generateResponse callable function leveraging OpenAI service with voice personalization
+- [ ] Add unit tests covering successful response generation and error handling scenarios
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/functions/generate-response.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/functions/generate-response.js
+@@
+-const { chatCompletion, DEFAULT_MODEL } = require(
+-    "../services/openai-service",
+-);
+-const { ToneLevel, ResponseFormat } = require(
+-    "../types/response-generation",
+-);
++const { chatCompletion, DEFAULT_MODEL } = require(
++    "../services/openai-service",
++);
++const { ToneLevel, ResponseFormat } = require(
++    "../types/response-generation",
++);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/functions/generate-response.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/functions/generate-response.js
+@@
+-const { ToneLevel, ResponseFormat } = require(
+-    "../types/response-generation",
+-);
++const { ToneLevel, ResponseFormat } = require(
++    "../types/response-generation",
++);
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/functions/generate-response.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/functions/generate-response.js
+@@
+-const buildSystemPrompt = (creatorProfile = {}) => {
++const buildSystemPrompt = (creatorProfile = {}) => {
+@@
+-const formatConversationHistory = (history = []) => {
++const formatConversationHistory = (history = []) => {
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/src/functions/generate-response.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: src/functions/generate-response.js
+@@
+-const buildMessages = ({
+-    latestMessage,
+-    conversationHistory,
+-    creatorProfile,
+-    responsePreferences = {},
+-}) => {
++const buildMessages = ({
++    latestMessage,
++    conversationHistory,
++    creatorProfile,
++    responsePreferences = {},
++}) => {
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define response generation prompt structure and schema for generateResponse Cloud Function
+- [x] Implement generateResponse callable function leveraging OpenAI service with voice personalization
+- [-] Add unit tests covering successful response generation and error handling scenarios
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions/test/generate-response.test.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Add File: test/generate-response.test.js
++const chai = require("chai");
++const sinon = require("sinon");
++const chaiAsPromised = require("chai-as-promised");
++
++const functionsTest = require("firebase-functions-test")();
++
++chai.use(chaiAsPromised);
++const { expect } = chai;
++
++const sandbox = sinon.createSandbox();
++
++describe("generateResponse", () => {
++    let wrapped;
++    let chatCompletionStub;
++
++    beforeEach(() => {
++        sandbox.restore();
++        delete require.cache[require.resolve("../src/services/openai-service")];
++        delete require.cache[require.resolve("../src/functions/generate-response")];
++
++        chatCompletionStub = sandbox.stub().resolves({
++            choices: [
++                {
++                    message: {
++                        content: JSON.stringify({
++                            reply: "Thanks for reaching out!",
++                            tone: "friendly",
++                            format: "paragraph",
++                            reasoning: "Matches creator style.",
++                            followUpQuestions: ["Do you have a deadline?"],
++                            suggestedNextActions: ["Share rate card"],
++                        }),
++                    },
++                },
++            ],
++        });
++
++        sandbox.stub(
++            require("../src/services/openai-service"),
++            "chatCompletion",
++        ).callsFake(chatCompletionStub);
++
++        const generateResponse = require("../src/functions/generate-response");
++        wrapped = functionsTest.wrap(generateResponse);
++    });
++
++    afterEach(() => {
++        sandbox.restore();
++    });
++
++    it("returns generated reply with sanitized fields", async () => {
++        const data = {
++            message: "We'd love to collaborate",
++            conversationHistory: [
++                { speaker: "Fan", content: "Hey!" },
++                { speaker: "Creator", content: "Hello!" },
++            ],
++            creatorProfile: {
++                displayName: "Rae",
++                persona: "Energetic fitness coach",
++                defaultTone: "friendly",
++                styleGuidelines: ["Encourage healthy habits"],
++                voiceSamples: ["Let's crush it today!"],
++                signature: "- Rae",
++            },
++            responsePreferences: {
++                tone: "professional",
++                includeSignature: true,
++            },
++        };
++
++        const context = {
++            auth: {
++                uid: "creator123",
++            },
++        };
++
++        const result = await wrapped(data, context);
++
++        expect(result.reply).to.equal("Thanks for reaching out!");
++        expect(result.tone).to.equal("friendly");
++        expect(result.format).to.equal("paragraph");
++        expect(result.reasoning).to.equal("Matches creator style.");
++        expect(result.followUpQuestions).to.deep.equal(["Do you have a deadline?"]);
++        expect(result.suggestedNextActions).to.deep.equal(["Share rate card"]);
++    });
++
++    it("rejects unauthenticated requests", async () => {
++        const data = { message: "hi" };
++        await expect(wrapped(data, {}))
++            .to.be.rejectedWith("Authentication required to generate response");
++    });
++
++    it("rejects when message missing", async () => {
++        const context = { auth: { uid: "123" } };
++        await expect(wrapped({}, context))
++            .to.be.rejectedWith("Message text is required for response generation");
++    });
++
++    it("throws internal error when OpenAI fails", async () => {
++        sandbox.restore();
++        sandbox.stub(
++            require("../src/services/openai-service"),
++            "chatCompletion",
++        ).rejects(new Error("OpenAI failure"));
++
++        delete require.cache[require.resolve("../src/functions/generate-response")];
++        const generateResponse = require("../src/functions/generate-response");
++        wrapped = functionsTest.wrap(generateResponse);
++
++        const data = { message: "hello" };
++        const context = { auth: { uid: "123" } };
++
++        await expect(wrapped(data, context))
++            .to.be.rejectedWith("Failed to generate response");
++    });
++});
+*** End Patch
+```
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Define response generation prompt structure and schema for generateResponse Cloud Function
+- [x] Implement generateResponse callable function leveraging OpenAI service with voice personalization
+- [x] Add unit tests covering successful response generation and error handling scenarios
+
+---
+
+<think><details><summary>Thought Process</summary>**Preparing to run linter**</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+cd /Users/rasheedlewis/Workspace/gauntlet/MessageAI/functions && npm_config_cache=/Users/rasheedlewis/Workspace/gauntlet/MessageAI/.npm-cache npm run lint
+```
+
+```
+
+> lint
+> eslint .
+
+
+```
+
+---
+
+### Response Generation Function
+
+- Added `generateResponse` callable export in `functions/index.js`.
+- Implemented `src/functions/generate-response.js`:
+  - Builds creator-specific system prompt with style guidelines, voice samples, signature, and JSON output schema.
+  - Considers conversation history (limited to 8 latest entries) and response preferences (tone/format/signature).
+  - Parses/sanitizes OpenAI chat output, returning `reply`, `tone`, `format`, `reasoning`, `followUpQuestions`, and `suggestedNextActions`.
+  - Handles auth/argument validation and wraps errors in `HttpsError`.
+- Created `src/types/response-generation.js` defining tone and format enums.
+- Added unit tests in `test/generate-response.test.js` (mocha/chai/sinon via `firebase-functions-test`):
+  - Happy-path result verification and sanitization.
+  - Auth guard, missing message, and upstream error propagation cases.
+- Lint (`npm run lint`) passes; `npm test` still not defined (tests ready when script added).
+
+Next step (optional): create an npm test script or document how to run tests manually.
+
+---
+
