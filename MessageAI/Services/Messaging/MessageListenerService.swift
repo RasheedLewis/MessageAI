@@ -4,6 +4,7 @@ import Foundation
 
 protocol MessageListenerServiceProtocol: AnyObject {
     var conversationUpdatesPublisher: AnyPublisher<Void, Never> { get }
+    var conversationEventPublisher: AnyPublisher<Conversation, Never> { get }
     var messageUpdatesPublisher: AnyPublisher<String, Never> { get }
     func startConversationListener(
         for userID: String,
@@ -25,6 +26,7 @@ protocol MessageListenerServiceProtocol: AnyObject {
 
 final class MessageListenerService: MessageListenerServiceProtocol {
     private let conversationUpdatesSubject = PassthroughSubject<Void, Never>()
+    private let conversationEventSubject = PassthroughSubject<Conversation, Never>()
     private let messageUpdatesSubject = PassthroughSubject<String, Never>()
 
     private enum FirestoreKey {
@@ -44,6 +46,10 @@ final class MessageListenerService: MessageListenerServiceProtocol {
 
     var conversationUpdatesPublisher: AnyPublisher<Void, Never> {
         conversationUpdatesSubject.eraseToAnyPublisher()
+    }
+
+    var conversationEventPublisher: AnyPublisher<Conversation, Never> {
+        conversationEventSubject.eraseToAnyPublisher()
     }
 
     var messageUpdatesPublisher: AnyPublisher<String, Never> {
@@ -200,6 +206,7 @@ final class MessageListenerService: MessageListenerServiceProtocol {
             #endif
         }
         conversationUpdatesSubject.send()
+        conversationEventSubject.send(conversation)
     }
 
     private func handleConversationRemoval(conversationID: String) {

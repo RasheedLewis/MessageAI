@@ -30,8 +30,6 @@
 /* Begin PBXFileReference section */
 		E53E49EF2EA73F4A00C4CCEF /* MessageAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MessageAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5E9E3D12EA8287B00C44972 /* MessageAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MessageAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		E5F0A1032ED11CF900A9C9F0 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
-		E5F0A1052ED11D6400A9C9F0 /* AIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIServiceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -570,11 +568,6 @@
 			package = E535A1AE2EA74A5B0073B7A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
 		};
-		E5F0A0FC2ED11C1000A9C9F0 /* FirebaseFunctions */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E535A1AE2EA74A5B0073B7A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFunctions;
-		};
 		E5E9E3C42EA821C800C44972 /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E5E9E3C32EA821C800C44972 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
@@ -584,6 +577,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E5E9E3C32EA821C800C44972 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		E5F0A0FC2ED11C1000A9C9F0 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E535A1AE2EA74A5B0073B7A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

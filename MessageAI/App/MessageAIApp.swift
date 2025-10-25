@@ -32,7 +32,15 @@ struct MessageAIApp: App {
             userDirectoryService: userDirectoryService
         )
         let currentUserID = AuthenticationService.shared.currentUser?.uid ?? "demo"
-        _services = StateObject(wrappedValue: ServiceResolver(
+        let categorizationCoordinator = MessageCategorizationCoordinator(
+            aiService: AIService.shared,
+            localDataManager: localDataManager,
+            messageRepository: messageRepository,
+            conversationRepository: conversationRepository,
+            listenerService: listener,
+            currentUserID: currentUserID
+        )
+        let resolver = ServiceResolver(
             localDataManager: localDataManager,
             listenerService: listener,
             messageService: messageService,
@@ -42,10 +50,13 @@ struct MessageAIApp: App {
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
             aiService: AIService.shared,
+            categorizationCoordinator: categorizationCoordinator,
             currentUserID: currentUserID
-        ))
+        )
+        _services = StateObject(wrappedValue: resolver)
 
         appDelegate.notificationCoordinator = notificationCoordinator
+        categorizationCoordinator.start()
     }
 
     var body: some Scene {

@@ -272,6 +272,34 @@ final class LocalDataManager {
         try context.save()
     }
 
+    func updateMessageAIData(
+        messageID: String,
+        category: LocalMessageCategory?,
+        sentiment: String?,
+        priority: Int?,
+        collaborationScore: Double?,
+        metadata: [String: String]
+    ) throws {
+        let message = try message(withID: messageID)
+        message.aiCategory = category
+        message.sentiment = sentiment
+        message.priority = priority
+        message.collaborationScore = collaborationScore
+        message.metadata = metadata
+        try context.save()
+    }
+
+    func updateConversationCategory(
+        conversationID: String,
+        category: LocalMessageCategory?
+    ) throws {
+        guard let conversation = try conversation(withID: conversationID) else {
+            throw LocalDataManagerError.conversationNotFound(conversationID)
+        }
+        conversation.aiCategory = category
+        try context.save()
+    }
+
     func deleteMessage(withID id: String) throws {
         let message = try message(withID: id)
         let conversation = message.conversation

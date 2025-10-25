@@ -21,6 +21,11 @@ public protocol ConversationRepositoryProtocol {
         userID: String
     ) async throws
 
+    func updateAICategory(
+        conversationID: String,
+        category: MessageCategory
+    ) async throws
+
     func conversationDocumentReference(_ conversationID: String) -> DocumentReference
 }
 
@@ -83,6 +88,17 @@ public final class ConversationRepository: ConversationRepositoryProtocol {
         let reference = conversationDocumentReference(conversationID)
         try await reference.updateData([
             "unreadCount.\(userID)": 0,
+            Field.updatedAt: Timestamp(date: Date())
+        ])
+    }
+
+    public func updateAICategory(
+        conversationID: String,
+        category: MessageCategory
+    ) async throws {
+        let reference = conversationDocumentReference(conversationID)
+        try await reference.updateData([
+            "aiCategory": category.rawValue,
             Field.updatedAt: Timestamp(date: Date())
         ])
     }

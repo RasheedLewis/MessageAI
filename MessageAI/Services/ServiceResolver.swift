@@ -3,14 +3,15 @@ import Foundation
 
 final class ServiceResolver: ObservableObject {
     @Published var localDataManager: LocalDataManager
-    @Published var messageListenerService: MessageListenerServiceProtocol
     @Published var messageService: MessageServiceProtocol
     @Published var conversationRepository: ConversationRepositoryProtocol
     @Published var messageRepository: MessageRepositoryProtocol
+    @Published var messageListenerService: MessageListenerServiceProtocol
     @Published var userSearchService: UserSearchServiceProtocol
     @Published var userDirectoryService: UserDirectoryServiceProtocol
     @Published var groupAvatarService: GroupAvatarUploading
     @Published var aiService: AIServiceProtocol
+    @Published var categorizationCoordinator: MessageCategorizationCoordinating
     @Published var currentUserID: String
 
     init(
@@ -23,6 +24,7 @@ final class ServiceResolver: ObservableObject {
         userDirectoryService: UserDirectoryServiceProtocol,
         groupAvatarService: GroupAvatarUploading,
         aiService: AIServiceProtocol,
+        categorizationCoordinator: MessageCategorizationCoordinating,
         currentUserID: String
     ) {
         self.localDataManager = localDataManager
@@ -34,6 +36,7 @@ final class ServiceResolver: ObservableObject {
         self.userDirectoryService = userDirectoryService
         self.groupAvatarService = groupAvatarService
         self.aiService = aiService
+        self.categorizationCoordinator = categorizationCoordinator
         self.currentUserID = currentUserID
     }
 
@@ -60,6 +63,7 @@ final class ServiceResolver: ObservableObject {
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
             aiService: AIServiceMock(),
+            categorizationCoordinator: MessageCategorizationCoordinator.mock,
             currentUserID: "demo"
         )
     }

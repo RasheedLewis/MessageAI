@@ -13,6 +13,11 @@ public protocol MessageRepositoryProtocol {
         messageID: String,
         readBy: [String: Date]
     ) async throws
+    func updateAIMetadata(
+        conversationID: String,
+        messageID: String,
+        metadata: AIMetadata
+    ) async throws
     func messageDocumentReference(
         conversationID: String,
         messageID: String
@@ -68,6 +73,17 @@ public final class MessageRepository: MessageRepositoryProtocol {
 
         try await reference.updateData([
             Field.readBy: readByData
+        ])
+    }
+
+    public func updateAIMetadata(
+        conversationID: String,
+        messageID: String,
+        metadata: AIMetadata
+    ) async throws {
+        let reference = messageDocumentReference(conversationID: conversationID, messageID: messageID)
+        try await reference.updateData([
+            "aiMetadata": metadata.firestoreData()
         ])
     }
 
