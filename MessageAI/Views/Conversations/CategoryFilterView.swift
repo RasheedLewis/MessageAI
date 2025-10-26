@@ -32,21 +32,33 @@ struct CategoryFilterView: View {
                 selectedCategory = category
             }
         } label: {
-            Text(title(for: category))
-                .font(.theme.bodyMedium)
-                .foregroundStyle(isSelected ? Color.theme.textOnPrimary : Color.theme.textOnSurface)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? Color.theme.secondary : Color.theme.surface.opacity(0.8))
-                )
-                .overlay(alignment: .topTrailing) {
-                    if count > 0 {
-                        countBadge(count, isSelected: isSelected)
-                            .offset(x: 10, y: -8)
-                    }
+            HStack(spacing: 8) {
+                if let category {
+                    Image(systemName: icon(for: category))
+                        .font(.system(size: 15, weight: .medium))
                 }
+
+                Text(title(for: category))
+                    .font(Font.custom("Inter-Medium", size: 15))
+            }
+            .foregroundStyle(isSelected ? Color.white : AppColors.filterInactiveText)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(isSelected ? selectionColor(for: category) : AppColors.filterInactiveBackground)
+            )
+            .overlay(
+                Capsule()
+                    .stroke(isSelected ? selectionColor(for: category) : AppColors.filterInactiveBorder, lineWidth: 1)
+            )
+            .overlay(alignment: .topTrailing) {
+                if count > 0 {
+                    countBadge(count, isSelected: isSelected, tint: selectionColor(for: category))
+                        .offset(x: 10, y: -8)
+                }
+            }
+            .opacity(isSelected ? 1.0 : 0.9)
         }
         .buttonStyle(.plain)
     }
@@ -68,15 +80,15 @@ struct CategoryFilterView: View {
         }
     }
 
-    private func countBadge(_ count: Int, isSelected: Bool) -> some View {
+    private func countBadge(_ count: Int, isSelected: Bool, tint: Color) -> some View {
         Text("\(count)")
             .font(.theme.captionMedium)
-            .foregroundStyle(isSelected ? Color.theme.textOnPrimary : Color.theme.secondary)
+            .foregroundStyle(isSelected ? Color.white : tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
                 Capsule()
-                    .fill(isSelected ? Color.theme.secondary.opacity(0.9) : Color.theme.surface)
+                    .fill(isSelected ? tint.opacity(0.9) : AppColors.filterInactiveBackground)
             )
     }
 
@@ -101,6 +113,40 @@ struct CategoryFilterView: View {
             Capsule()
                 .stroke(Color.theme.surface.opacity(0.5))
         )
+    }
+
+    private func selectionColor(for category: MessageCategory?) -> Color {
+        guard let category else {
+            return Color.theme.secondary
+        }
+
+        switch category {
+        case .fan:
+            return Color(red: 0.28, green: 0.78, blue: 0.46)
+        case .business:
+            return Color(red: 0.29, green: 0.54, blue: 0.96)
+        case .spam:
+            return Color(red: 0.58, green: 0.63, blue: 0.70)
+        case .urgent:
+            return Color(red: 0.95, green: 0.33, blue: 0.31)
+        case .general:
+            return Color.theme.primary
+        }
+    }
+
+    private func icon(for category: MessageCategory) -> String {
+        switch category {
+        case .fan:
+            return "heart.fill"
+        case .business:
+            return "briefcase.fill"
+        case .spam:
+            return "exclamationmark.triangle.fill"
+        case .urgent:
+            return "bolt.fill"
+        case .general:
+            return "bubble.left.fill"
+        }
     }
 }
 

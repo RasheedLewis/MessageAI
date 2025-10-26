@@ -53,13 +53,13 @@ struct CategoryBadgeView: View {
     private var backgroundColor: Color {
         switch category {
         case .fan:
-            return Color.theme.accent
+            return Color(red: 0.28, green: 0.78, blue: 0.46)
         case .business:
-            return Color.theme.secondary
+            return Color(red: 0.29, green: 0.54, blue: 0.96)
         case .spam:
-            return Color.theme.disabled
+            return Color(red: 0.58, green: 0.63, blue: 0.70)
         case .urgent:
-            return Color.theme.error
+            return Color(red: 0.95, green: 0.33, blue: 0.31)
         case .general:
             return Color.theme.primary
         }

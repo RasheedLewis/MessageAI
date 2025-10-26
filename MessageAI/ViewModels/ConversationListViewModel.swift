@@ -39,6 +39,7 @@ final class ConversationListViewModel: ObservableObject {
     }
     @Published private(set) var filterCounts: [MessageCategory?: Int] = [:]
     @Published private(set) var uncategorizedCount: Int = 0
+    @Published var overrideError: String? = nil
 
     private var localDataManager: LocalDataManager { services.localDataManager }
     private var listenerService: MessageListenerServiceProtocol { services.messageListenerService }
@@ -72,6 +73,64 @@ final class ConversationListViewModel: ObservableObject {
 
     func refresh() {
         fetchLocalConversations()
+    }
+
+    func overrideCategory(for conversationID: String, to category: MessageCategory) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await services.conversationRepository.updateAICategory(
+                    conversationID: conversationID,
+                    category: category
+                )
+
+                if let localCategory = LocalMessageCategory(rawValue: category.rawValue) {
+                    try await MainActor.run {
+                        try self.localDataManager.updateConversationCategory(
+                            conversationID: conversationID,
+                            category: localCategory
+                        )
+                    }
+                }
+
+                await MainActor.run {
+                    self.applyOverrideLocally(conversationID: conversationID, category: category)
+                    self.listenerService.notifyConversationUpdated()
+                }
+            } catch {
+                await MainActor.run {
+                    self.overrideError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func clearOverride(for conversationID: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await services.conversationRepository.updateAICategory(
+                    conversationID: conversationID,
+                    category: .general
+                )
+
+                try await MainActor.run {
+                    try self.localDataManager.updateConversationCategory(
+                        conversationID: conversationID,
+                        category: nil
+                    )
+                }
+
+                await MainActor.run {
+                    self.applyOverrideLocally(conversationID: conversationID, category: .general)
+                    self.listenerService.notifyConversationUpdated()
+                }
+            } catch {
+                await MainActor.run {
+                    self.overrideError = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func setupBindings() {
@@ -114,7 +173,9 @@ final class ConversationListViewModel: ObservableObject {
         for category in MessageCategory.allCases {
             counts[category] = allConversations.filter { $0.aiCategory == category }.count
         }
-        let pendingCount = allConversations.filter { $0.aiCategory == nil }.count
+        let pendingCount = allConversations.filter {
+            $0.aiCategory == nil && $0.lastMessageTime != nil
+        }.count
         filterCounts = counts
         uncategorizedCount = pendingCount
     }
@@ -125,6 +186,30 @@ final class ConversationListViewModel: ObservableObject {
         } else {
             conversations = allConversations
         }
+    }
+
+    @MainActor
+    private func applyOverrideLocally(
+        conversationID: String,
+        category: MessageCategory?
+    ) {
+        if let index = allConversations.firstIndex(where: { $0.id == conversationID }) {
+            let item = allConversations[index]
+            let updated = ConversationItem(
+                id: item.id,
+                title: item.title,
+                lastMessagePreview: item.lastMessagePreview,
+                lastMessageTime: item.lastMessageTime,
+                unreadCount: item.unreadCount,
+                isOnline: item.isOnline,
+                aiCategory: category,
+                participantIDs: item.participantIDs
+            )
+            allConversations[index] = updated
+        }
+
+        updateCounts()
+        applyFilter()
     }
 
     private func compareConversations(_ lhs: ConversationItem, _ rhs: ConversationItem) -> Bool {

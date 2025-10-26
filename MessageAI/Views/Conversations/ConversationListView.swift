@@ -19,11 +19,22 @@ struct ConversationListView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("Messages")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppColors.conversationBackground, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Messages")
+                        .font(.theme.navTitle)
+                        .fontWeight(.semibold)
+                        .tracking(1)
+                        .foregroundStyle(Color.theme.accent)
+                        .frame(height: 34)
+                        .shadow(color: Color.theme.accent.opacity(0.45), radius: 8)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { isPresentingNewConversation = true }) {
-                        ThemedIcon(systemName: "square.and.pencil", state: .active, size: 18)
+                        ThemedIcon(systemName: "square.and.pencil", state: .custom(Color.theme.secondary, glow: true), size: 18)
                     }
                 }
             }
@@ -70,15 +81,25 @@ struct ConversationListView: View {
                         tag: conversation.id,
                         selection: $activeConversationID
                     ) {
-                        ConversationRowView(item: conversation)
+                        ConversationRowView(
+                            item: conversation,
+                            onOverrideCategory: { category in
+                                viewModel.overrideCategory(for: conversation.id, to: category)
+                            },
+                            onClearOverride: {
+                                viewModel.clearOverride(for: conversation.id)
+                            }
+                        )
                     }
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
                 .listStyle(.plain)
+                .environment(\.defaultMinListRowHeight, 76.0)
                 .refreshable { viewModel.refresh() }
             }
         }
-        .background(Color.theme.primary)
+        .background(AppColors.conversationBackground)
         .onAppear {
             if let pending = notificationCoordinator.pendingConversationID {
                 navigate(to: pending)
