@@ -26,6 +26,12 @@ public protocol ConversationRepositoryProtocol {
         category: MessageCategory
     ) async throws
 
+    func updateAIInsights(
+        conversationID: String,
+        sentiment: String?,
+        priority: Int?
+    ) async throws
+
     func conversationDocumentReference(_ conversationID: String) -> DocumentReference
 }
 
@@ -101,6 +107,18 @@ public final class ConversationRepository: ConversationRepositoryProtocol {
             "aiCategory": category.rawValue,
             Field.updatedAt: Timestamp(date: Date())
         ])
+    }
+
+    public func updateAIInsights(
+        conversationID: String,
+        sentiment: String?,
+        priority: Int?
+    ) async throws {
+        let reference = conversationDocumentReference(conversationID)
+        var updates: [String: Any] = [Field.updatedAt: Timestamp(date: Date())]
+        updates["aiSentiment"] = sentiment
+        updates["aiPriority"] = priority
+        try await reference.updateData(updates)
     }
 
     public func conversationDocumentReference(_ conversationID: String) -> DocumentReference {

@@ -25,6 +25,7 @@ struct MessageAIApp: App {
         let messageRepository = MessageRepository()
         let listener = MessageListenerService(localDataManager: localDataManager)
         let userDirectoryService = UserDirectoryService()
+        let userRepository = UserRepository.shared
         let messageService = MessageService(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,
@@ -52,7 +53,7 @@ struct MessageAIApp: App {
             aiService: AIService.shared,
             categorizationCoordinator: categorizationCoordinator,
             currentUserID: currentUserID,
-            userRepository: UserRepository.shared
+            userRepository: userRepository
         )
         _services = StateObject(wrappedValue: resolver)
 

@@ -173,6 +173,12 @@ final class MessageCategorizationCoordinator: MessageCategorizationCoordinating 
                     category: category
                 )
 
+                try await conversationRepository.updateAIInsights(
+                    conversationID: message.conversationID,
+                    sentiment: analysis.sentiment,
+                    priority: analysis.priority
+                )
+
                 let localCategory = LocalMessageCategory(rawValue: category.rawValue)
 
                 try await MainActor.run {
@@ -188,6 +194,12 @@ final class MessageCategorizationCoordinator: MessageCategorizationCoordinating 
                     try localDataManager.updateConversationCategory(
                         conversationID: message.conversationID,
                         category: localCategory
+                    )
+
+                    try localDataManager.updateConversationAIInsights(
+                        conversationID: message.conversationID,
+                        sentiment: analysis.sentiment,
+                        priority: analysis.priority
                     )
 
                     listenerService.notifyMessageUpdated(conversationID: message.conversationID)

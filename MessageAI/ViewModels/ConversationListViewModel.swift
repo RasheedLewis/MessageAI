@@ -11,6 +11,8 @@ final class ConversationListViewModel: ObservableObject {
         let unreadCount: Int
         let isOnline: Bool
         let aiCategory: MessageCategory?
+        let aiSentiment: String?
+        let aiPriority: Int?
         let participantIDs: [String]
     }
 
@@ -155,6 +157,8 @@ final class ConversationListViewModel: ObservableObject {
                     unreadCount: unreadCount,
                     isOnline: false,
                     aiCategory: local.aiCategory.flatMap { MessageCategory(rawValue: $0.rawValue) },
+                    aiSentiment: local.aiSentiment,
+                    aiPriority: local.aiPriority,
                     participantIDs: local.participantIDs
                 )
             }
@@ -181,11 +185,12 @@ final class ConversationListViewModel: ObservableObject {
     }
 
     private func applyFilter() {
-        if let selectedFilter {
-            conversations = allConversations.filter { $0.aiCategory == selectedFilter }
-        } else {
-            conversations = allConversations
-        }
+        conversations = allConversations
+            .filter { item in
+                guard let selectedFilter else { return true }
+                return item.aiCategory == selectedFilter
+            }
+            .sorted(by: prioritySort)
     }
 
     @MainActor
@@ -203,6 +208,8 @@ final class ConversationListViewModel: ObservableObject {
                 unreadCount: item.unreadCount,
                 isOnline: item.isOnline,
                 aiCategory: category,
+                aiSentiment: item.aiSentiment,
+                aiPriority: item.aiPriority,
                 participantIDs: item.participantIDs
             )
             allConversations[index] = updated
@@ -224,6 +231,20 @@ final class ConversationListViewModel: ObservableObject {
             break
         }
         return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+
+    private func prioritySort(_ lhs: ConversationItem, _ rhs: ConversationItem) -> Bool {
+        switch (lhs.aiPriority, rhs.aiPriority) {
+        case let (lhsPriority?, rhsPriority?) where lhsPriority != rhsPriority:
+            return lhsPriority > rhsPriority
+        case let (lhsPriority?, nil):
+            return lhsPriority > 0
+        case let (nil, rhsPriority?):
+            return rhsPriority <= 0
+        default:
+            break
+        }
+        return compareConversations(lhs, rhs)
     }
 
     private func normalizedPreview(for conversation: LocalConversation) -> String? {

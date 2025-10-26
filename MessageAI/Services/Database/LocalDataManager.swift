@@ -300,6 +300,19 @@ final class LocalDataManager {
         try context.save()
     }
 
+    func updateConversationAIInsights(
+        conversationID: String,
+        sentiment: String?,
+        priority: Int?
+    ) throws {
+        guard let conversation = try conversation(withID: conversationID) else {
+            throw LocalDataManagerError.conversationNotFound(conversationID)
+        }
+        conversation.aiSentiment = sentiment
+        conversation.aiPriority = priority
+        try context.save()
+    }
+
     func deleteMessage(withID id: String) throws {
         let message = try message(withID: id)
         let conversation = message.conversation

@@ -26,6 +26,8 @@ final class LocalConversation {
     var lastMessagePreview: String?
     var unreadCounts: [String: Int]
     var aiCategory: LocalMessageCategory?
+    var aiSentiment: String?
+    var aiPriority: Int?
     var lastSyncedAt: Date?
     var pendingUploadCount: Int
     var pendingDownloadCount: Int
@@ -42,6 +44,8 @@ final class LocalConversation {
         lastMessagePreview: String? = nil,
         unreadCounts: [String: Int] = [:],
         aiCategory: LocalMessageCategory? = nil,
+        aiSentiment: String? = nil,
+        aiPriority: Int? = nil,
         lastSyncedAt: Date? = nil,
         pendingUploadCount: Int = 0,
         pendingDownloadCount: Int = 0,
@@ -57,6 +61,8 @@ final class LocalConversation {
         self.lastMessagePreview = lastMessagePreview
         self.unreadCounts = unreadCounts
         self.aiCategory = aiCategory
+        self.aiSentiment = aiSentiment
+        self.aiPriority = aiPriority
         self.lastSyncedAt = lastSyncedAt
         self.pendingUploadCount = pendingUploadCount
         self.pendingDownloadCount = pendingDownloadCount

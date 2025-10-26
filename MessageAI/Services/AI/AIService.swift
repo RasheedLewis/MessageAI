@@ -40,6 +40,7 @@ struct AIResponseGenerationResult: Codable, Equatable {
 struct AIResponseGenerationRequest: Codable, Equatable {
     let message: String
     let conversationHistory: [ConversationEntry]
+    let conversationContext: ConversationContext?
     let creatorProfile: CreatorProfilePayload
     let responsePreferences: ResponsePreferences
 
@@ -48,11 +49,13 @@ struct AIResponseGenerationRequest: Codable, Equatable {
     init(
         message: String,
         conversationHistory: [ConversationEntry],
+        conversationContext: ConversationContext? = nil,
         creatorProfile: CreatorProfilePayload,
         responsePreferences: ResponsePreferences = .init()
     ) {
         self.message = message.trimmingCharacters(in: .whitespacesAndNewlines)
         self.conversationHistory = Self.sanitizeHistory(conversationHistory)
+        self.conversationContext = conversationContext
         self.creatorProfile = creatorProfile
         self.responsePreferences = responsePreferences
     }
@@ -62,12 +65,14 @@ struct AIResponseGenerationRequest: Codable, Equatable {
         conversationHistory: [ConversationEntry],
         creatorDisplayName: String?,
         profile: CreatorProfile?,
+        conversationContext: ConversationContext? = nil,
         responsePreferences: ResponsePreferences = .init()
     ) {
         let payload = CreatorProfilePayload(displayName: creatorDisplayName, profile: profile)
         self.init(
             message: message,
             conversationHistory: conversationHistory,
+            conversationContext: conversationContext,
             creatorProfile: payload,
             responsePreferences: responsePreferences
         )
@@ -90,6 +95,24 @@ struct AIResponseGenerationRequest: Codable, Equatable {
         enum CodingKeys: String, CodingKey {
             case speaker
             case content
+        }
+    }
+
+    struct ConversationContext: Codable, Equatable {
+        let category: String?
+        let sentiment: String?
+        let priority: Int?
+        let latestIncomingTimestamp: Date?
+        let lastResponseTimestamp: Date?
+        let participantCount: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case category
+            case sentiment
+            case priority
+            case latestIncomingTimestamp
+            case lastResponseTimestamp
+            case participantCount
         }
     }
 

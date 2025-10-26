@@ -176,6 +176,8 @@ struct ConversationRowView: View {
             unreadCount: 2,
             isOnline: true,
             aiCategory: .business,
+            aiSentiment: "positive",
+            aiPriority: 80,
             participantIDs: []
         ),
         onOverrideCategory: { _ in },

@@ -240,9 +240,9 @@ final class ChatViewModel: ObservableObject {
         suggestionPreview = ""
 
         let history = buildConversationHistory()
-        let lastIncomingMessage = latestRemoteMessages.reversed().first(where: { $0.senderID != currentUserID })?.content
+        let lastIncomingMessage = latestRemoteMessages.reversed().first { $0.senderID != currentUserID }
         let fallbackMessage = draftText
-        let baseMessage = lastIncomingMessage ?? fallbackMessage
+        let baseMessage = lastIncomingMessage?.content ?? fallbackMessage
         let sanitizedMessage = baseMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !sanitizedMessage.isEmpty else {
@@ -252,6 +252,7 @@ final class ChatViewModel: ObservableObject {
 
         suggestionPreview = previewText(for: sanitizedMessage)
 
+        let contextualInfo = buildConversationContext(from: lastIncomingMessage)
         let creatorContext = currentCreatorProfile()
 
         suggestionTask = Task { [weak self] in
@@ -262,7 +263,8 @@ final class ChatViewModel: ObservableObject {
                     message: sanitizedMessage,
                     conversationHistory: history,
                     creatorDisplayName: creatorContext?.displayName,
-                    profile: creatorContext?.profile
+                    profile: creatorContext?.profile,
+                    conversationContext: contextualInfo
                 )
 
                 let result = try await aiService.generateResponse(request).asyncValue()
@@ -322,12 +324,47 @@ final class ChatViewModel: ObservableObject {
     private func buildConversationHistory() -> [AIResponseGenerationRequest.ConversationEntry] {
         let recentMessages = latestRemoteMessages.suffix(8)
         return recentMessages.map { message in
-            let speaker: String = message.senderID == currentUserID ? "You" : (participantNames[message.senderID] ?? "Participant")
+            let speaker: String
+            if message.senderID == currentUserID {
+                speaker = "You"
+            } else if let name = participantNames[message.senderID], !name.isEmpty {
+                speaker = name
+            } else {
+                speaker = "Participant"
+            }
+
+            let content = message.content.isEmpty && message.mediaURL != nil
+                ? "[Attachment]"
+                : message.content
+
             return AIResponseGenerationRequest.ConversationEntry(
                 speaker: speaker,
-                content: message.content
+                content: content
             )
         }
+    }
+
+    private func buildConversationContext(from lastIncoming: LocalMessage?) -> AIResponseGenerationRequest.ConversationContext {
+        let localConversation = try? localDataManager.conversation(withID: conversationID)
+        let conversationCategory = localConversation?.aiCategory
+        let category = conversationCategory.flatMap { MessageCategory(rawValue: $0.rawValue) }?.rawValue
+        let sentiment = localConversation?.aiSentiment
+        let priority = localConversation?.aiPriority
+
+        let latestIncomingTimestamp = lastIncoming?.timestamp
+        let lastResponseTimestamp = latestRemoteMessages
+            .reversed()
+            .first { $0.senderID == currentUserID }?
+            .timestamp
+
+        return AIResponseGenerationRequest.ConversationContext(
+            category: category,
+            sentiment: sentiment,
+            priority: priority,
+            latestIncomingTimestamp: latestIncomingTimestamp,
+            lastResponseTimestamp: lastResponseTimestamp,
+            participantCount: participants.count
+        )
     }
 
     private func currentCreatorProfile() -> (displayName: String?, profile: CreatorProfile?)? {

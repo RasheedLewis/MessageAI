@@ -16,6 +16,8 @@ public struct Conversation: Identifiable, Codable, Equatable {
     public var lastMessageTime: Date?
     public var unreadCount: [String: Int]
     public var aiCategory: MessageCategory?
+    public var aiSentiment: String?
+    public var aiPriority: Int?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -29,6 +31,8 @@ public struct Conversation: Identifiable, Codable, Equatable {
         lastMessageTime: Date? = nil,
         unreadCount: [String: Int] = [:],
         aiCategory: MessageCategory? = nil,
+        aiSentiment: String? = nil,
+        aiPriority: Int? = nil,
         createdAt: Date? = nil,
         updatedAt: Date? = nil
     ) {
@@ -41,6 +45,8 @@ public struct Conversation: Identifiable, Codable, Equatable {
         self.lastMessageTime = lastMessageTime
         self.unreadCount = unreadCount
         self.aiCategory = aiCategory
+        self.aiSentiment = aiSentiment
+        self.aiPriority = aiPriority
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -59,6 +65,8 @@ extension Conversation {
         case lastMessageTime
         case unreadCount
         case aiCategory
+        case aiSentiment
+        case aiPriority
         case createdAt
         case updatedAt
     }
@@ -98,12 +106,9 @@ extension Conversation {
 
         let unreadCount = data["unreadCount"] as? [String: Int] ?? [:]
 
-        let aiCategory: MessageCategory?
-        if let rawCategory = data["aiCategory"] as? String {
-            aiCategory = MessageCategory(rawValue: rawCategory)
-        } else {
-            aiCategory = nil
-        }
+        let aiCategory = (data["aiCategory"] as? String).flatMap(MessageCategory.init(rawValue:))
+        let aiSentiment = data["aiSentiment"] as? String
+        let aiPriority = data["aiPriority"] as? Int
 
         let createdAt: Date?
         if let timestamp = data["createdAt"] as? Timestamp {
@@ -133,6 +138,8 @@ extension Conversation {
             lastMessageTime: lastMessageTime,
             unreadCount: unreadCount,
             aiCategory: aiCategory,
+            aiSentiment: aiSentiment,
+            aiPriority: aiPriority,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -165,6 +172,14 @@ extension Conversation {
 
         if let aiCategory {
             data["aiCategory"] = aiCategory.rawValue
+        }
+
+        if let aiSentiment {
+            data["aiSentiment"] = aiSentiment
+        }
+
+        if let aiPriority {
+            data["aiPriority"] = aiPriority
         }
 
         if let createdAt {
