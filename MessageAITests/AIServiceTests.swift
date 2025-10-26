@@ -55,22 +55,9 @@ final class AIServiceTests: XCTestCase {
         let request = AIResponseGenerationRequest(
             message: "Hi",
             conversationHistory: [],
-            creatorProfile: .init(
-                displayName: nil,
-                persona: nil,
-                defaultTone: nil,
-                styleGuidelines: nil,
-                voiceSamples: nil,
-                signature: nil,
-                includeSignature: nil,
-                preferredFormat: nil
-            ),
-            responsePreferences: .init(
-                tone: nil,
-                format: nil,
-                includeSignature: nil,
-                notes: nil
-            )
+            creatorDisplayName: nil,
+            profile: nil,
+            responsePreferences: .init()
         )
 
         let expectation = XCTestExpectation(description: "Fails to generate response")

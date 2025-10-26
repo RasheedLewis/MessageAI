@@ -40,15 +40,60 @@ struct AIResponseGenerationResult: Codable, Equatable {
 struct AIResponseGenerationRequest: Codable, Equatable {
     let message: String
     let conversationHistory: [ConversationEntry]
-    let creatorProfile: CreatorProfile
+    let creatorProfile: CreatorProfilePayload
     let responsePreferences: ResponsePreferences
+
+    private static let maxHistoryEntries = 8
+
+    init(
+        message: String,
+        conversationHistory: [ConversationEntry],
+        creatorProfile: CreatorProfilePayload,
+        responsePreferences: ResponsePreferences = .init()
+    ) {
+        self.message = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.conversationHistory = Self.sanitizeHistory(conversationHistory)
+        self.creatorProfile = creatorProfile
+        self.responsePreferences = responsePreferences
+    }
+
+    init(
+        message: String,
+        conversationHistory: [ConversationEntry],
+        creatorDisplayName: String?,
+        profile: CreatorProfile?,
+        responsePreferences: ResponsePreferences = .init()
+    ) {
+        let payload = CreatorProfilePayload(displayName: creatorDisplayName, profile: profile)
+        self.init(
+            message: message,
+            conversationHistory: conversationHistory,
+            creatorProfile: payload,
+            responsePreferences: responsePreferences
+        )
+    }
+
+    private static func sanitizeHistory(_ entries: [ConversationEntry]) -> [ConversationEntry] {
+        let trimmed = entries.compactMap { entry -> ConversationEntry? in
+            let speaker = entry.speaker.trimmingCharacters(in: .whitespacesAndNewlines)
+            let content = entry.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !speaker.isEmpty, !content.isEmpty else { return nil }
+            return ConversationEntry(speaker: speaker, content: content)
+        }
+        return Array(trimmed.suffix(maxHistoryEntries))
+    }
 
     struct ConversationEntry: Codable, Equatable {
         let speaker: String
         let content: String
+
+        enum CodingKeys: String, CodingKey {
+            case speaker
+            case content
+        }
     }
 
-    struct CreatorProfile: Codable, Equatable {
+    struct CreatorProfilePayload: Codable, Equatable {
         let displayName: String?
         let persona: String?
         let defaultTone: String?
@@ -57,6 +102,50 @@ struct AIResponseGenerationRequest: Codable, Equatable {
         let signature: String?
         let includeSignature: Bool?
         let preferredFormat: String?
+
+        init(
+            displayName: String?,
+            persona: String?,
+            defaultTone: String?,
+            styleGuidelines: [String]?,
+            voiceSamples: [String]?,
+            signature: String?,
+            includeSignature: Bool?,
+            preferredFormat: String?
+        ) {
+            self.displayName = displayName?.nonEmpty
+            self.persona = persona?.nonEmpty
+            self.defaultTone = defaultTone?.nonEmpty
+            self.styleGuidelines = styleGuidelines?.sanitizedStrings()
+            self.voiceSamples = voiceSamples?.sanitizedStrings()
+            self.signature = signature?.nonEmpty
+            self.includeSignature = includeSignature
+            self.preferredFormat = preferredFormat?.nonEmpty
+        }
+
+        init(displayName: String?, profile: CreatorProfile?) {
+            self.init(
+                displayName: displayName,
+                persona: profile?.persona,
+                defaultTone: profile?.defaultTone,
+                styleGuidelines: profile?.styleGuidelines,
+                voiceSamples: profile?.voiceSamples,
+                signature: profile?.signature,
+                includeSignature: profile?.includeSignature,
+                preferredFormat: profile?.preferredFormat
+            )
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case displayName
+            case persona
+            case defaultTone
+            case styleGuidelines
+            case voiceSamples
+            case signature
+            case includeSignature
+            case preferredFormat
+        }
     }
 
     struct ResponsePreferences: Codable, Equatable {
@@ -64,6 +153,25 @@ struct AIResponseGenerationRequest: Codable, Equatable {
         let format: String?
         let includeSignature: Bool?
         let notes: String?
+
+        init(
+            tone: String? = nil,
+            format: String? = nil,
+            includeSignature: Bool? = nil,
+            notes: String? = nil
+        ) {
+            self.tone = tone?.nonEmpty
+            self.format = format?.nonEmpty
+            self.includeSignature = includeSignature
+            self.notes = notes?.nonEmpty
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case tone
+            case format
+            case includeSignature
+            case notes
+        }
     }
 }
 

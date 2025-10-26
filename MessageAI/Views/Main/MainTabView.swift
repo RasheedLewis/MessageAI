@@ -93,7 +93,13 @@ private struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Account") {
-                    Label("Profile", systemImage: "person.crop.circle")
+                    NavigationLink {
+                        ProfileSetupView(viewModel: profileViewModel)
+                            .navigationTitle("Edit Profile")
+                            .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        Label("Profile", systemImage: "person.crop.circle")
+                    }
                     Label("Notifications", systemImage: "bell.fill")
 
                     Button(role: .destructive, action: signOut) {
@@ -122,6 +128,8 @@ private struct SettingsView: View {
             }
         }
     }
+
+    @State private var profileViewModel = AuthenticationViewModel()
 
     private func signOut() {
         guard !isSigningOut else { return }

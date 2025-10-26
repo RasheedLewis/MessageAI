@@ -229,8 +229,7 @@ struct ProfileSetupView: View {
                 .buttonStyle(.borderless)
             }
 
-            ForEach(Array(viewModel.voiceSamples.enumerated()), id: \.
-                offset) { index, sample in
+            ForEach(Array(viewModel.voiceSamples.enumerated()), id: \.offset) { index, sample in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Sample \(index + 1)")
@@ -277,8 +276,7 @@ struct ProfileSetupView: View {
                 .buttonStyle(.borderless)
             }
 
-            ForEach(Array(viewModel.styleGuidelines.enumerated()), id: \.
-                offset) { index, note in
+            ForEach(Array(viewModel.styleGuidelines.enumerated()), id: \.offset) { index, note in
                 HStack(alignment: .top, spacing: 8) {
                     TextField("Keep it concise and actionable.", text: Binding(
                         get: { note },

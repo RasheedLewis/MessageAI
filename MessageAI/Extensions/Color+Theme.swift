@@ -41,6 +41,7 @@ struct AppColorTheme {
     let primaryVariant = Color(hex: "#1D203A")
     let secondary = Color(hex: "#E94F37")
     let accent = Color(hex: "#B29BFF")
+    let surfaceVariant = Color(hex: "#FFFFFF", opacity: 0.08)
     let surface = Color(hex: "#F8F6F3")
     let textOnPrimary = Color(hex: "#FFFFFF")
     let textOnSurface = Color(hex: "#121212")
