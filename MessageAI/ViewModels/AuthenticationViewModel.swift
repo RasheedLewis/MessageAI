@@ -6,6 +6,8 @@ import FirebaseMessaging
 
 @MainActor
 final class AuthenticationViewModel: ObservableObject {
+    private static let defaultCreatorProfile = CreatorProfile()
+
     enum ViewState: Equatable {
         case idle
         case loading
@@ -17,6 +19,13 @@ final class AuthenticationViewModel: ObservableObject {
     @Published var error: String?
     @Published var displayName: String = ""
     @Published var photoURL: URL?
+    @Published var persona: String = AuthenticationViewModel.defaultCreatorProfile.persona
+    @Published var defaultTone: String = AuthenticationViewModel.defaultCreatorProfile.defaultTone
+    @Published var preferredFormat: String = AuthenticationViewModel.defaultCreatorProfile.preferredFormat
+    @Published var includeSignature: Bool = AuthenticationViewModel.defaultCreatorProfile.includeSignature
+    @Published var signature: String = AuthenticationViewModel.defaultCreatorProfile.signature
+    @Published var voiceSamples: [String] = Array(repeating: "", count: 3)
+    @Published var styleGuidelines: [String] = [""]
 
     private var cancellables: Set<AnyCancellable> = []
     private let authService: AuthenticationService
@@ -59,8 +68,25 @@ final class AuthenticationViewModel: ObservableObject {
                     } else {
                         state = .authenticated
                     }
+
+                    if let profile = user.creatorProfile {
+                        persona = profile.persona
+                        defaultTone = profile.defaultTone
+                        preferredFormat = profile.preferredFormat
+                        includeSignature = profile.includeSignature
+                        signature = profile.signature
+
+                        let sanitizedSamples = profile.voiceSamples
+                        voiceSamples = sanitizedSamples.isEmpty ? Array(repeating: "", count: 3) : sanitizedSamples
+
+                        let sanitizedGuidelines = profile.styleGuidelines
+                        styleGuidelines = sanitizedGuidelines.isEmpty ? [""] : sanitizedGuidelines
+                    } else {
+                        resetCreatorVoiceDefaults()
+                    }
                 } else if authService.currentUser != nil {
                     state = .needsProfileSetup
+                    resetCreatorVoiceDefaults()
                 }
             }
             .store(in: &cancellables)
@@ -123,6 +149,37 @@ final class AuthenticationViewModel: ObservableObject {
                 updatedUser.photoURL = uploadedURL
             }
 
+            let existingProfile = userRepository.currentUser()?.creatorProfile
+            let trimmedPersona = persona.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedSignature = signature.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sanitizedVoiceSamples = voiceSamples
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let sanitizedGuidelines = styleGuidelines
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            let resolvedPersona = trimmedPersona.isEmpty ? AuthenticationViewModel.defaultCreatorProfile.persona : trimmedPersona
+            let resolvedTone = defaultTone.isEmpty ? AuthenticationViewModel.defaultCreatorProfile.defaultTone : defaultTone
+            let resolvedFormat = preferredFormat.isEmpty ? AuthenticationViewModel.defaultCreatorProfile.preferredFormat : preferredFormat
+            let shouldIncludeSignature = includeSignature && !trimmedSignature.isEmpty
+
+            let updatedCreatorProfile = CreatorProfile(
+                bio: existingProfile?.bio ?? "",
+                faqTopics: existingProfile?.faqTopics ?? [],
+                voiceSamples: sanitizedVoiceSamples,
+                persona: resolvedPersona,
+                defaultTone: resolvedTone,
+                styleGuidelines: sanitizedGuidelines,
+                signature: trimmedSignature,
+                includeSignature: shouldIncludeSignature,
+                preferredFormat: resolvedFormat,
+                autoResponseEnabled: existingProfile?.autoResponseEnabled ?? false,
+                businessKeywords: existingProfile?.businessKeywords ?? []
+            )
+
+            updatedUser.creatorProfile = updatedCreatorProfile
+
             try await userRepository.createOrUpdateUser(updatedUser)
             state = .authenticated
         } catch {
@@ -134,6 +191,40 @@ final class AuthenticationViewModel: ObservableObject {
     private func syncFCMToken() async throws {
         guard let token = Messaging.messaging().fcmToken else { return }
         try await userRepository.updateFCMToken(token)
+    }
+
+    func addVoiceSampleField() {
+        voiceSamples.append("")
+    }
+
+    func removeVoiceSample(at index: Int) {
+        guard voiceSamples.indices.contains(index) else { return }
+        voiceSamples.remove(at: index)
+        if voiceSamples.isEmpty {
+            voiceSamples.append("")
+        }
+    }
+
+    func addStyleGuidelineField() {
+        styleGuidelines.append("")
+    }
+
+    func removeStyleGuideline(at index: Int) {
+        guard styleGuidelines.indices.contains(index) else { return }
+        styleGuidelines.remove(at: index)
+        if styleGuidelines.isEmpty {
+            styleGuidelines.append("")
+        }
+    }
+
+    private func resetCreatorVoiceDefaults() {
+        persona = AuthenticationViewModel.defaultCreatorProfile.persona
+        defaultTone = AuthenticationViewModel.defaultCreatorProfile.defaultTone
+        preferredFormat = AuthenticationViewModel.defaultCreatorProfile.preferredFormat
+        includeSignature = AuthenticationViewModel.defaultCreatorProfile.includeSignature
+        signature = AuthenticationViewModel.defaultCreatorProfile.signature
+        voiceSamples = Array(repeating: "", count: 3)
+        styleGuidelines = [""]
     }
 }
 

@@ -71,6 +71,12 @@ final class UserRepositoryTests: XCTestCase {
             bio: "Bio",
             faqTopics: ["topic"],
             voiceSamples: ["sample"],
+            persona: "Thoughtful creator",
+            defaultTone: "friendly",
+            styleGuidelines: ["Keep it concise"],
+            signature: "-- Creator",
+            includeSignature: true,
+            preferredFormat: "paragraph",
             autoResponseEnabled: true,
             businessKeywords: ["brand"]
         )
@@ -80,6 +86,8 @@ final class UserRepositoryTests: XCTestCase {
         let data = usersCollection.documentMocks["user-456"]?.setDataPayload?["creatorProfile"] as? [String: Any]
         XCTAssertEqual(data?["bio"] as? String, "Bio")
         XCTAssertEqual(data?["autoResponseEnabled"] as? Bool, true)
+        XCTAssertEqual(data?["persona"] as? String, "Thoughtful creator")
+        XCTAssertEqual(data?["includeSignature"] as? Bool, true)
     }
 
     func testCurrentUserPublisherEmitsUpdatesFromSnapshot() {

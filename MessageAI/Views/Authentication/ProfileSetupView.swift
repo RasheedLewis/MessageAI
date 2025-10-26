@@ -37,6 +37,12 @@ struct ProfileSetupView: View {
                         .submitLabel(.done)
                 }
 
+                voicePersonaSection
+                tonePreferencesSection
+                signatureSection
+                voiceSamplesSection
+                styleGuidelinesSection
+
                 Button {
                     Task { await saveProfile() }
                 } label: {
@@ -134,6 +140,168 @@ struct ProfileSetupView: View {
 
     private var isContinueEnabled: Bool {
         !isSaving && !viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var voicePersonaSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Creator Persona")
+                .font(.theme.subhead)
+            Text("Help the AI capture your vibe. Keep it short but evocative.")
+                .font(.theme.caption)
+                .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+
+            TextField("e.g. " + "Empathetic lifestyle creator who keeps things upbeat", text: $viewModel.persona, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...4)
+        }
+        .padding(16)
+        .background(Color.theme.surfaceVariant)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var tonePreferencesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tone & Format Preferences")
+                .font(.theme.subhead)
+            Text("Set the default voice and structure for drafted replies.")
+                .font(.theme.caption)
+                .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+
+            Picker("Default Tone", selection: $viewModel.defaultTone) {
+                Text("Friendly").tag("friendly")
+                Text("Casual").tag("casual")
+                Text("Professional").tag("professional")
+                Text("Formal").tag("formal")
+            }
+            .pickerStyle(.segmented)
+
+            Picker("Preferred Format", selection: $viewModel.preferredFormat) {
+                Text("Paragraph").tag("paragraph")
+                Text("Text").tag("text")
+                Text("Bullet").tag("bullet")
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(16)
+        .background(Color.theme.surfaceVariant)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var signatureSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $viewModel.includeSignature) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Include Signature")
+                        .font(.theme.subhead)
+                    Text("Automatically append a personal sign-off when it makes sense.")
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                }
+            }
+
+            if viewModel.includeSignature {
+                TextField("With gratitude, [Your Name]", text: Binding(
+                    get: { viewModel.signature },
+                    set: { viewModel.signature = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+            }
+        }
+        .padding(16)
+        .background(Color.theme.surfaceVariant)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var voiceSamplesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Voice Samples")
+                        .font(.theme.subhead)
+                    Text("Add a few real replies so the AI stays true to you.")
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                }
+                Spacer()
+                Button(action: viewModel.addVoiceSampleField) {
+                    Label("Add", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            ForEach(Array(viewModel.voiceSamples.enumerated()), id: \.
+                offset) { index, sample in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Sample \(index + 1)")
+                            .font(.theme.caption)
+                            .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                        Spacer()
+                        if viewModel.voiceSamples.count > 1 {
+                            Button(role: .destructive) {
+                                viewModel.removeVoiceSample(at: index)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    TextField("Hey hey! Thanks so much for reaching out—this totally made my day!", text: Binding(
+                        get: { sample },
+                        set: { viewModel.voiceSamples[index] = $0 }
+                    ), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...4)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.theme.surfaceVariant)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var styleGuidelinesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Style Notes")
+                        .font(.theme.subhead)
+                    Text("Optional reminders like \"Always lead with gratitude\".")
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                }
+                Spacer()
+                Button(action: viewModel.addStyleGuidelineField) {
+                    Label("Add", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            ForEach(Array(viewModel.styleGuidelines.enumerated()), id: \.
+                offset) { index, note in
+                HStack(alignment: .top, spacing: 8) {
+                    TextField("Keep it concise and actionable.", text: Binding(
+                        get: { note },
+                        set: { viewModel.styleGuidelines[index] = $0 }
+                    ), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+
+                    if viewModel.styleGuidelines.count > 1 {
+                        Button(role: .destructive) {
+                            viewModel.removeStyleGuideline(at: index)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(Color.theme.error)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.theme.surfaceVariant)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private func loadImage(from pickerItem: PhotosPickerItem) async {

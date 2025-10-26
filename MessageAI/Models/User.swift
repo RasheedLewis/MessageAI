@@ -5,6 +5,12 @@ public struct CreatorProfile: Codable, Equatable {
     public var bio: String
     public var faqTopics: [String]
     public var voiceSamples: [String]
+    public var persona: String
+    public var defaultTone: String
+    public var styleGuidelines: [String]
+    public var signature: String
+    public var includeSignature: Bool
+    public var preferredFormat: String
     public var autoResponseEnabled: Bool
     public var businessKeywords: [String]
 
@@ -12,12 +18,24 @@ public struct CreatorProfile: Codable, Equatable {
         bio: String = "",
         faqTopics: [String] = [],
         voiceSamples: [String] = [],
+        persona: String = "Engaging creator focused on authentic connections",
+        defaultTone: String = "friendly",
+        styleGuidelines: [String] = [],
+        signature: String = "",
+        includeSignature: Bool = false,
+        preferredFormat: String = "paragraph",
         autoResponseEnabled: Bool = false,
         businessKeywords: [String] = []
     ) {
         self.bio = bio
         self.faqTopics = faqTopics
         self.voiceSamples = voiceSamples
+        self.persona = persona
+        self.defaultTone = defaultTone
+        self.styleGuidelines = styleGuidelines
+        self.signature = signature
+        self.includeSignature = includeSignature
+        self.preferredFormat = preferredFormat
         self.autoResponseEnabled = autoResponseEnabled
         self.businessKeywords = businessKeywords
     }
@@ -130,6 +148,12 @@ extension CreatorProfile {
         case bio
         case faqTopics
         case voiceSamples
+        case persona
+        case defaultTone
+        case styleGuidelines
+        case signature
+        case includeSignature
+        case preferredFormat
         case autoResponseEnabled
         case businessKeywords
     }
@@ -141,6 +165,12 @@ extension CreatorProfile {
 
         let faqTopics = data["faqTopics"] as? [String] ?? []
         let voiceSamples = data["voiceSamples"] as? [String] ?? []
+        let persona = data["persona"] as? String ?? "Engaging creator focused on authentic connections"
+        let defaultTone = data["defaultTone"] as? String ?? "friendly"
+        let styleGuidelines = data["styleGuidelines"] as? [String] ?? []
+        let signature = data["signature"] as? String ?? ""
+        let includeSignature = data["includeSignature"] as? Bool ?? false
+        let preferredFormat = data["preferredFormat"] as? String ?? "paragraph"
         let autoResponseEnabled = data["autoResponseEnabled"] as? Bool ?? false
         let businessKeywords = data["businessKeywords"] as? [String] ?? []
 
@@ -148,6 +178,12 @@ extension CreatorProfile {
             bio: bio,
             faqTopics: faqTopics,
             voiceSamples: voiceSamples,
+            persona: persona,
+            defaultTone: defaultTone,
+            styleGuidelines: styleGuidelines,
+            signature: signature,
+            includeSignature: includeSignature,
+            preferredFormat: preferredFormat,
             autoResponseEnabled: autoResponseEnabled,
             businessKeywords: businessKeywords
         )
@@ -158,6 +194,12 @@ extension CreatorProfile {
             "bio": bio,
             "faqTopics": faqTopics,
             "voiceSamples": voiceSamples,
+            "persona": persona,
+            "defaultTone": defaultTone,
+            "styleGuidelines": styleGuidelines,
+            "signature": signature,
+            "includeSignature": includeSignature,
+            "preferredFormat": preferredFormat,
             "autoResponseEnabled": autoResponseEnabled,
             "businessKeywords": businessKeywords
         ]
