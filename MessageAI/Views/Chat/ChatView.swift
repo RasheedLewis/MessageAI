@@ -14,6 +14,7 @@ struct ChatView: View {
             Divider()
             messagesList
             Divider()
+            suggestionToolbar
             MessageInputView(
                 text: $viewModel.draftText,
                 isSending: viewModel.isSending,
@@ -78,6 +79,57 @@ struct ChatView: View {
         .background(Color.theme.primaryVariant)
     }
 
+    private var suggestionToolbar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                Label("AI Assist", systemImage: "sparkles")
+                    .font(.theme.captionMedium)
+                    .foregroundStyle(Color.theme.accent)
+
+                Spacer()
+
+                Button(action: viewModel.generateSuggestion) {
+                    HStack(spacing: 6) {
+                        if viewModel.isGeneratingSuggestion {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(Color.theme.accent)
+                                .scaleEffect(0.75)
+                        } else {
+                            Image(systemName: "wand.and.stars")
+                        }
+                        Text(viewModel.isGeneratingSuggestion ? "Drafting…" : "Suggest Reply")
+                    }
+                    .font(.theme.captionMedium)
+                }
+                .buttonStyle(.secondaryThemed)
+                .disabled(viewModel.isGeneratingSuggestion)
+            }
+
+            if let suggestion = viewModel.currentSuggestion {
+                AISuggestionCard(
+                    suggestion: suggestion,
+                    onInsert: viewModel.applySuggestionToDraft,
+                    onRegenerate: viewModel.regenerateSuggestion,
+                    onDismiss: viewModel.dismissSuggestion
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let errorMessage = viewModel.suggestionError {
+                Text(errorMessage)
+                    .font(.theme.caption)
+                    .foregroundStyle(Color.theme.error)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.theme.primaryVariant.opacity(0.9))
+        )
+        .padding(.horizontal)
+        .padding(.top, 12)
+    }
+
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -97,14 +149,21 @@ struct ChatView: View {
                         .id(bottomID)
                 }
                 .padding(.horizontal)
-                .padding(.vertical, 12)
+                .padding(
+                    .vertical,
+                    12
+                )
             }
             .background(Color.theme.primaryVariant)
             .onChange(of: viewModel.messages.count) { _, _ in
-                withAnimation {
-                    proxy.scrollTo(bottomID, anchor: .bottom)
-                }
+                scrollToBottom(proxy: proxy)
             }
+        }
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        withAnimation {
+            proxy.scrollTo(bottomID, anchor: .bottom)
         }
     }
 
@@ -112,6 +171,113 @@ struct ChatView: View {
         Task {
             await viewModel.sendMessage()
         }
+    }
+}
+
+private struct AISuggestionCard: View {
+    let suggestion: ChatViewModel.AISuggestion
+    let onInsert: () -> Void
+    let onRegenerate: () -> Void
+    let onDismiss: () -> Void
+
+    @State private var isExpanded: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI Suggestion", systemImage: "sparkles")
+                    .font(.theme.captionMedium)
+                    .foregroundStyle(Color.theme.accent)
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.theme.captionMedium)
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(suggestion.reply)
+                .font(.theme.body)
+                .foregroundStyle(Color.theme.textOnPrimary)
+                .lineLimit(isExpanded ? nil : 3)
+
+            if !suggestion.reasoning.isEmpty {
+                DisclosureGroup(isExpanded: $isExpanded) {
+                    suggestionDetails
+                } label: {
+                    Text(isExpanded ? "Hide details" : "Show details")
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.accent)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button(action: onInsert) {
+                    Label("Use Reply", systemImage: "arrow.down.doc")
+                }
+                .buttonStyle(.primaryThemed)
+
+                Button(action: onRegenerate) {
+                    Label("Regenerate", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.secondaryThemed)
+            }
+            .padding(.top, 4)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.theme.primary)
+                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 6)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.theme.accent.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private var suggestionDetails: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            followUpSection
+            actionsSection
+            reasoningSection
+        }
+        .padding(.top, 4)
+    }
+
+    private var followUpSection: some View {
+        Group {
+            if !suggestion.followUpQuestions.isEmpty {
+                Text("Follow-ups:")
+                    .font(.theme.captionMedium)
+                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
+                ForEach(suggestion.followUpQuestions, id: \.self) { question in
+                    Text("• " + question)
+                        .font(.theme.caption)
+                }
+            }
+        }
+    }
+
+    private var actionsSection: some View {
+        Group {
+            if !suggestion.suggestedNextActions.isEmpty {
+                Text("Next actions:")
+                    .font(.theme.captionMedium)
+                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
+                ForEach(suggestion.suggestedNextActions, id: \.self) { action in
+                    Text("• " + action)
+                        .font(.theme.caption)
+                }
+            }
+        }
+    }
+
+    private var reasoningSection: some View {
+        Text("Reasoning: " + suggestion.reasoning)
+            .font(.theme.caption)
+            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
     }
 }
 

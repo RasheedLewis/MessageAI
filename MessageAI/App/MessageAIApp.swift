@@ -51,7 +51,8 @@ struct MessageAIApp: App {
             groupAvatarService: GroupAvatarService(),
             aiService: AIService.shared,
             categorizationCoordinator: categorizationCoordinator,
-            currentUserID: currentUserID
+            currentUserID: currentUserID,
+            userRepository: UserRepository.shared
         )
         _services = StateObject(wrappedValue: resolver)
 

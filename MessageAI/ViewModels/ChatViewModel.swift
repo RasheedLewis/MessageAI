@@ -27,27 +27,53 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var isGroupConversation: Bool = false
     @Published private(set) var participants: [Participant] = []
     @Published var isTypingAI: Bool = false
+    @Published private(set) var isGeneratingSuggestion: Bool = false
+    @Published private(set) var suggestionError: String?
+    @Published private(set) var currentSuggestion: AISuggestion?
+    @Published private(set) var suggestionPreview: String = ""
+
+    struct AISuggestion: Equatable {
+        let reply: String
+        let tone: String
+        let format: String
+        let reasoning: String
+        let followUpQuestions: [String]
+        let suggestedNextActions: [String]
+        let generatedAt: Date
+        let iteration: Int
+    }
 
     private let conversationID: String
     private let localDataManager: LocalDataManager
     private let messageService: MessageServiceProtocol
     private let listenerService: MessageListenerServiceProtocol
     private let userDirectoryService: UserDirectoryServiceProtocol
+    private let aiService: AIServiceProtocol
+    private let userRepository: UserRepositoryType
     private let currentUserID: String
     private var cancellables: Set<AnyCancellable> = []
     private var participantNames: [String: String] = [:]
+    private var suggestionIteration: Int = 0
+    private var suggestionTask: Task<Void, Never>?
+    private var latestRemoteMessages: [LocalMessage] = []
+    private var typingPreviewCancellable: AnyCancellable?
 
     init(
         conversationID: String,
-        services: ServiceResolver
+        services: ServiceResolver,
+        prefilledSuggestion: String? = nil
     ) {
         self.conversationID = conversationID
         self.localDataManager = services.localDataManager
         self.messageService = services.messageService
         self.listenerService = services.messageListenerService
         self.userDirectoryService = services.userDirectoryService
+        self.aiService = services.aiService
+        self.userRepository = services.userRepository
         self.currentUserID = services.currentUserID
+        self.suggestionPreview = prefilledSuggestion ?? ""
         observeMessageUpdates()
+        observeDraftChanges()
     }
 
     func onAppear() {
@@ -65,6 +91,7 @@ final class ChatViewModel: ObservableObject {
 
     func onDisappear() {
         listenerService.stopMessagesListener(for: conversationID)
+        suggestionTask?.cancel()
     }
 
     func sendMessage() async {
@@ -87,6 +114,7 @@ final class ChatViewModel: ObservableObject {
 
         reloadMessages()
         isSending = false
+        resetSuggestionState()
     }
 
     private func observeMessageUpdates() {
@@ -104,6 +132,7 @@ final class ChatViewModel: ObservableObject {
     private func reloadMessages() {
         let localMessages = (try? localDataManager.fetchMessages(forConversationID: conversationID)) ?? []
         messages = localMessages.map { makeChatMessage(from: $0) }
+        latestRemoteMessages = localMessages
         updateConversationInfo()
     }
 
@@ -194,6 +223,163 @@ final class ChatViewModel: ObservableObject {
             }
         } else {
             participantSummary = ""
+        }
+    }
+
+    // MARK: - AI Suggestions
+
+    func generateSuggestion() {
+        guard !isGeneratingSuggestion else { return }
+        suggestionTask?.cancel()
+
+        suggestionIteration += 1
+        let iteration = suggestionIteration
+
+        isGeneratingSuggestion = true
+        suggestionError = nil
+        suggestionPreview = ""
+
+        let history = buildConversationHistory()
+        let lastIncomingMessage = latestRemoteMessages.reversed().first(where: { $0.senderID != currentUserID })?.content
+        let fallbackMessage = draftText
+        let baseMessage = lastIncomingMessage ?? fallbackMessage
+        let sanitizedMessage = baseMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !sanitizedMessage.isEmpty else {
+            finishSuggestion(suggestion: nil, errorMessage: "No recent message to respond to.")
+            return
+        }
+
+        suggestionPreview = previewText(for: sanitizedMessage)
+
+        let creatorContext = currentCreatorProfile()
+
+        suggestionTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let request = AIResponseGenerationRequest(
+                    message: sanitizedMessage,
+                    conversationHistory: history,
+                    creatorDisplayName: creatorContext?.displayName,
+                    profile: creatorContext?.profile
+                )
+
+                let result = try await aiService.generateResponse(request).asyncValue()
+
+                let suggestion = AISuggestion(
+                    reply: result.reply,
+                    tone: result.tone,
+                    format: result.format,
+                    reasoning: result.reasoning,
+                    followUpQuestions: result.followUpQuestions,
+                    suggestedNextActions: result.suggestedNextActions,
+                    generatedAt: Date(),
+                    iteration: iteration
+                )
+
+                await MainActor.run {
+                    self.finishSuggestion(suggestion: suggestion, errorMessage: nil)
+                }
+            } catch {
+                await MainActor.run {
+                    self.finishSuggestion(suggestion: nil, errorMessage: "Failed to generate suggestion. Please try again.")
+                }
+            }
+        }
+    }
+
+    func applySuggestionToDraft() {
+        guard let suggestion = currentSuggestion else { return }
+        draftText = suggestion.reply
+        resetSuggestionState()
+    }
+
+    func regenerateSuggestion() {
+        generateSuggestion()
+    }
+
+    func dismissSuggestion() {
+        resetSuggestionState()
+    }
+
+    private func finishSuggestion(suggestion: AISuggestion?, errorMessage: String?) {
+        currentSuggestion = suggestion
+        suggestionError = errorMessage
+        suggestionPreview = suggestion.map { previewText(for: $0.reply) } ?? ""
+        isGeneratingSuggestion = false
+    }
+
+    private func resetSuggestionState() {
+        suggestionTask?.cancel()
+        suggestionTask = nil
+        isGeneratingSuggestion = false
+        suggestionError = nil
+        currentSuggestion = nil
+        suggestionPreview = ""
+    }
+
+    private func buildConversationHistory() -> [AIResponseGenerationRequest.ConversationEntry] {
+        let recentMessages = latestRemoteMessages.suffix(8)
+        return recentMessages.map { message in
+            let speaker: String = message.senderID == currentUserID ? "You" : (participantNames[message.senderID] ?? "Participant")
+            return AIResponseGenerationRequest.ConversationEntry(
+                speaker: speaker,
+                content: message.content
+            )
+        }
+    }
+
+    private func currentCreatorProfile() -> (displayName: String?, profile: CreatorProfile?)? {
+        guard let user = userRepository.currentUser() else { return nil }
+        return (user.displayName, user.creatorProfile)
+    }
+
+    private func previewText(for reply: String) -> String {
+        let trimmed = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 140 else { return trimmed }
+        let prefix = trimmed.prefix(140)
+        return prefix + "…"
+    }
+
+    func primeSuggestionPreview(with text: String?) {
+        suggestionPreview = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func observeDraftChanges() {
+        typingPreviewCancellable = $draftText
+            .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .debounce(for: .milliseconds(400), scheduler: RunLoop.main)
+            .sink { [weak self] text in
+                guard let self else { return }
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    self.suggestionPreview = ""
+                } else {
+                    self.suggestionPreview = self.previewText(for: trimmed)
+                }
+            }
+    }
+}
+
+private extension AnyPublisher {
+    func asyncValue() async throws -> Output {
+        try await withCheckedThrowingContinuation { continuation in
+            var cancellable: AnyCancellable?
+            cancellable = first()
+                .sink { completion in
+                    switch completion {
+                    case .finished:
+                        break
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                    cancellable?.cancel()
+                } receiveValue: { value in
+                    continuation.resume(returning: value)
+                    cancellable?.cancel()
+                }
         }
     }
 }

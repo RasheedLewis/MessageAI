@@ -13,6 +13,7 @@ final class ServiceResolver: ObservableObject {
     @Published var aiService: AIServiceProtocol
     @Published var categorizationCoordinator: MessageCategorizationCoordinating
     @Published var currentUserID: String
+    let userRepository: UserRepositoryType
 
     init(
         localDataManager: LocalDataManager,
@@ -25,7 +26,8 @@ final class ServiceResolver: ObservableObject {
         groupAvatarService: GroupAvatarUploading,
         aiService: AIServiceProtocol,
         categorizationCoordinator: MessageCategorizationCoordinating,
-        currentUserID: String
+        currentUserID: String,
+        userRepository: UserRepositoryType
     ) {
         self.localDataManager = localDataManager
         self.messageListenerService = listenerService
@@ -38,6 +40,7 @@ final class ServiceResolver: ObservableObject {
         self.aiService = aiService
         self.categorizationCoordinator = categorizationCoordinator
         self.currentUserID = currentUserID
+        self.userRepository = userRepository
     }
 
     static var previewResolver: ServiceResolver {
@@ -46,6 +49,7 @@ final class ServiceResolver: ObservableObject {
         let messageRepository = MessageRepository()
         let listener = MessageListenerService(localDataManager: localDataManager)
         let userDirectoryService = UserDirectoryService()
+        let userRepository = UserRepository()
         let messageService = MessageService(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,
@@ -64,7 +68,8 @@ final class ServiceResolver: ObservableObject {
             groupAvatarService: GroupAvatarService(),
             aiService: AIServiceMock(),
             categorizationCoordinator: MessageCategorizationCoordinator.mock,
-            currentUserID: "demo"
+            currentUserID: "demo",
+            userRepository: userRepository
         )
     }
 }
