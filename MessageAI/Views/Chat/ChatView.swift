@@ -88,38 +88,58 @@ struct ChatView: View {
 
                 Spacer()
 
-                Button(action: viewModel.generateSuggestion) {
-                    HStack(spacing: 6) {
-                        if viewModel.isGeneratingSuggestion {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(Color.theme.accent)
-                                .scaleEffect(0.75)
-                        } else {
-                            Image(systemName: "wand.and.stars")
+                if viewModel.currentSuggestion == nil {
+                    Button(action: viewModel.generateSuggestion) {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Image(systemName: "wand.and.stars")
+                                    .opacity(viewModel.isGeneratingSuggestion ? 0 : 1)
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(Color.theme.accent)
+                                    .scaleEffect(0.75)
+                                    .opacity(viewModel.isGeneratingSuggestion ? 1 : 0)
+                            }
+                            Text(viewModel.isGeneratingSuggestion ? "Drafting…" : "Suggest Reply")
+                                .font(.theme.bodyMedium)
                         }
-                        Text(viewModel.isGeneratingSuggestion ? "Drafting…" : "Suggest Reply")
+                        .foregroundStyle(Color.theme.accent)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.theme.accent.opacity(0.18))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.theme.accent.opacity(0.3), lineWidth: 1)
+                        )
                     }
-                    .font(.theme.captionMedium)
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isGeneratingSuggestion)
                 }
-                .buttonStyle(.secondaryThemed)
-                .disabled(viewModel.isGeneratingSuggestion)
             }
 
-            if let suggestion = viewModel.currentSuggestion {
-                AISuggestionCard(
-                    suggestion: suggestion,
-                    onInsert: viewModel.applySuggestionToDraft,
-                    onRegenerate: viewModel.regenerateSuggestion,
-                    onDismiss: viewModel.dismissSuggestion,
-                    onFeedback: { verdict in viewModel.recordFeedback(verdict: verdict) }
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if let errorMessage = viewModel.suggestionError {
-                Text(errorMessage)
-                    .font(.theme.caption)
-                    .foregroundStyle(Color.theme.error)
+            VStack(spacing: 12) {
+                if let suggestion = viewModel.currentSuggestion {
+                    AISuggestionCard(
+                        suggestion: suggestion,
+                        onInsert: viewModel.applySuggestionToDraft,
+                        onRegenerate: viewModel.regenerateSuggestion,
+                        onDismiss: viewModel.dismissSuggestion,
+                        hasSubmittedFeedback: viewModel.hasSubmittedFeedback,
+                        feedbackSelection: viewModel.feedbackSelection,
+                        onFeedback: { verdict in viewModel.recordFeedback(verdict: verdict) }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if let errorMessage = viewModel.suggestionError {
+                    Text(errorMessage)
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.error)
+                        .transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: viewModel.currentSuggestion)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -180,10 +200,11 @@ private struct AISuggestionCard: View {
     let onInsert: () -> Void
     let onRegenerate: () -> Void
     let onDismiss: () -> Void
+    let hasSubmittedFeedback: Bool
+    let feedbackSelection: ChatViewModel.SuggestionFeedbackVerdict?
     let onFeedback: (ChatViewModel.SuggestionFeedbackVerdict) -> Void
 
     @State private var isExpanded: Bool = true
-    @State private var hasSubmittedFeedback = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -203,29 +224,71 @@ private struct AISuggestionCard: View {
             Text(suggestion.reply)
                 .font(.theme.body)
                 .foregroundStyle(Color.theme.textOnPrimary)
-                .lineLimit(isExpanded ? nil : 3)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(nil)
 
-            if !suggestion.reasoning.isEmpty {
+            if hasDetails {
                 DisclosureGroup(isExpanded: $isExpanded) {
                     suggestionDetails
                 } label: {
-                    Text(isExpanded ? "Hide details" : "Show details")
-                        .font(.theme.caption)
-                        .foregroundStyle(Color.theme.accent)
+                    HStack(spacing: 4) {
+                        Text(isExpanded ? "Hide details" : "Show details")
+                            .font(.theme.caption)
+                            .foregroundStyle(Color.theme.accent)
+                        Image(systemName: "chevron.right")
+                            .font(.theme.caption)
+                            .foregroundStyle(Color.theme.accent)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    }
                 }
+                .disclosureGroupStyle(.automatic)
+                .onAppear { isExpanded = false }
             }
 
             HStack(spacing: 12) {
                 Button(action: onInsert) {
-                    Label("Use Reply", systemImage: "arrow.down.doc")
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.down.doc")
+                            .foregroundStyle(Color.theme.accent)
+                        Text("Use Reply")
+                            .foregroundStyle(Color.theme.accent)
+                            .font(.theme.bodyMedium)
+                    }
                 }
-                .buttonStyle(.primaryThemed)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.theme.accent.opacity(0.18))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.theme.accent.opacity(0.35), lineWidth: 1)
+                )
 
                 Button(action: onRegenerate) {
-                    Label("Regenerate", systemImage: "arrow.clockwise")
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.85))
+                        Text("Regenerate")
+                            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.85))
+                            .font(.theme.bodyMedium)
+                    }
                 }
-                .buttonStyle(.secondaryThemed)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.theme.textOnPrimary.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.theme.textOnPrimary.opacity(0.2), lineWidth: 1)
+                )
             }
+            .frame(maxWidth: .infinity)
             .padding(.top, 4)
 
             feedbackButtons
@@ -256,10 +319,11 @@ private struct AISuggestionCard: View {
             if !suggestion.followUpQuestions.isEmpty {
                 Text("Follow-ups:")
                     .font(.theme.captionMedium)
-                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
+                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.85))
                 ForEach(suggestion.followUpQuestions, id: \.self) { question in
                     Text("• " + question)
                         .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.9))
                 }
             }
         }
@@ -270,10 +334,11 @@ private struct AISuggestionCard: View {
             if !suggestion.suggestedNextActions.isEmpty {
                 Text("Next actions:")
                     .font(.theme.captionMedium)
-                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
+                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.85))
                 ForEach(suggestion.suggestedNextActions, id: \.self) { action in
                     Text("• " + action)
                         .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.9))
                 }
             }
         }
@@ -290,9 +355,11 @@ private struct AISuggestionCard: View {
             Button {
                 guard !hasSubmittedFeedback else { return }
                 onFeedback(.positive)
-                hasSubmittedFeedback = true
             } label: {
-                Label("Helpful", systemImage: "hand.thumbsup")
+                Label(
+                    hasSubmittedFeedback && feedbackSelection == .positive ? "Thanks" : "Helpful",
+                    systemImage: (hasSubmittedFeedback && feedbackSelection == .positive) ? "hand.thumbsup.fill" : "hand.thumbsup"
+                )
                     .font(.theme.captionMedium)
             }
             .buttonStyle(.tertiaryThemed)
@@ -301,15 +368,22 @@ private struct AISuggestionCard: View {
             Button {
                 guard !hasSubmittedFeedback else { return }
                 onFeedback(.negative)
-                hasSubmittedFeedback = true
             } label: {
-                Label("Not Quite", systemImage: "hand.thumbsdown")
+                Label(
+                    hasSubmittedFeedback && feedbackSelection == .negative ? "Logged" : "Not Quite",
+                    systemImage: (hasSubmittedFeedback && feedbackSelection == .negative) ? "hand.thumbsdown.fill" : "hand.thumbsdown"
+                )
                     .font(.theme.captionMedium)
             }
             .buttonStyle(.tertiaryThemed)
             .disabled(hasSubmittedFeedback)
         }
+        .frame(maxWidth: .infinity)
         .padding(.top, 4)
+    }
+
+    private var hasDetails: Bool {
+        !suggestion.reasoning.isEmpty || !suggestion.followUpQuestions.isEmpty || !suggestion.suggestedNextActions.isEmpty
     }
 }
 

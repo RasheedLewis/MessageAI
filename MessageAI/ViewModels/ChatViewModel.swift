@@ -31,6 +31,8 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var suggestionError: String?
     @Published private(set) var currentSuggestion: AISuggestion?
     @Published private(set) var suggestionPreview: String = ""
+    @Published private(set) var feedbackSelection: SuggestionFeedbackVerdict? = nil
+    @Published private(set) var hasSubmittedFeedback: Bool = false
 
     struct AISuggestion: Equatable {
         let reply: String
@@ -356,6 +358,11 @@ final class ChatViewModel: ObservableObject {
                         feedback: feedback
                     )
                 }
+
+                await MainActor.run {
+                    self.feedbackSelection = verdict
+                    self.hasSubmittedFeedback = true
+                }
             } catch {
                 await MainActor.run {
                     self.errorMessage = error.localizedDescription
@@ -378,6 +385,8 @@ final class ChatViewModel: ObservableObject {
         suggestionError = nil
         currentSuggestion = nil
         suggestionPreview = ""
+        hasSubmittedFeedback = false
+        feedbackSelection = nil
     }
 
     private func buildConversationHistory() -> [AIResponseGenerationRequest.ConversationEntry] {

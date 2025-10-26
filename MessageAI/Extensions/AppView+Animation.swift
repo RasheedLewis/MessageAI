@@ -6,4 +6,20 @@ extension Animation {
     }
 }
 
+extension View {
+    @ViewBuilder
+    func placeholder<Content: View>(
+        when shouldShow: Bool,
+        alignment: Alignment = .leading,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ZStack(alignment: alignment) {
+            if shouldShow {
+                content()
+            }
+            self
+        }
+    }
+}
+
 

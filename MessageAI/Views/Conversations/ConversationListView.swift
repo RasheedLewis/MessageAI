@@ -31,6 +31,7 @@ struct ConversationListView: View {
                         .foregroundStyle(Color.theme.accent)
                         .frame(height: 34)
                         .shadow(color: Color.theme.accent.opacity(0.45), radius: 8)
+                        .offset(y: 8)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { isPresentingNewConversation = true }) {
