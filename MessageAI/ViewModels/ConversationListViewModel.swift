@@ -37,6 +37,8 @@ final class ConversationListViewModel: ObservableObject {
     @Published var selectedFilter: MessageCategory? = nil {
         didSet { applyFilter() }
     }
+    @Published private(set) var filterCounts: [MessageCategory?: Int] = [:]
+    @Published private(set) var uncategorizedCount: Int = 0
 
     private var localDataManager: LocalDataManager { services.localDataManager }
     private var listenerService: MessageListenerServiceProtocol { services.messageListenerService }
@@ -98,11 +100,23 @@ final class ConversationListViewModel: ObservableObject {
                 )
             }
             self.allConversations = items.sorted(by: compareConversations)
+            updateCounts()
             applyFilter()
             loadingState = .loaded
         } catch {
             loadingState = .failed(error.localizedDescription)
         }
+    }
+
+    private func updateCounts() {
+        var counts: [MessageCategory?: Int] = [:]
+        counts[nil] = allConversations.count
+        for category in MessageCategory.allCases {
+            counts[category] = allConversations.filter { $0.aiCategory == category }.count
+        }
+        let pendingCount = allConversations.filter { $0.aiCategory == nil }.count
+        filterCounts = counts
+        uncategorizedCount = pendingCount
     }
 
     private func applyFilter() {

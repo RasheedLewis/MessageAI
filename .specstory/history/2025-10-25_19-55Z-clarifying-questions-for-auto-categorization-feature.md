@@ -2199,6 +2199,572 @@ Now work on 2. **Firestore & Local Sync**
 
 _**Assistant (gpt-5-codex)**_
 
+<think><details><summary>Thought Process</summary>**Designing sync and update flow for messages and conversations**
+
+I’m working through making sure local and Firestore synchronization handles message and conversation categories correctly, including priority logic and concurrency. I want to add manual update triggers so UI watchers refresh right after local changes, extending the message listener protocol with methods that fire update events to avoid stale views and duplicated processing. This involves updating aggregator functions, repository methods, and the coordinator to call these new notifications carefully.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageListenerService.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Messaging/MessageListenerService.swift
+@@
+ protocol MessageListenerServiceProtocol: AnyObject {
+     var conversationUpdatesPublisher: AnyPublisher<Void, Never> { get }
+     var conversationEventPublisher: AnyPublisher<Conversation, Never> { get }
+     var messageUpdatesPublisher: AnyPublisher<String, Never> { get }
+@@
+     func stopMessagesListener(for conversationID: String)
+ 
+     func stopAllMessageListeners()
++
++    func notifyConversationUpdated()
++    func notifyMessageUpdated(conversationID: String)
+ }
+@@
+     func stopAllMessageListeners() {
+         messageListeners.values.forEach { $0.remove() }
+         messageListeners.removeAll()
+     }
++
++    func notifyConversationUpdated() {
++        conversationUpdatesSubject.send()
++    }
++
++    func notifyMessageUpdated(conversationID: String) {
++        messageUpdatesSubject.send(conversationID)
++    }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+@@
+-    private let currentUserID: String
++    private let currentUserID: String
++    private let listenerService: MessageListenerServiceProtocol
+*** End Patch
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating init parameter order**</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+@@
+-    private let listenerService: MessageListenerServiceProtocol
+-    private let currentUserID: String
+-    private let listenerService: MessageListenerServiceProtocol
++    private let listenerService: MessageListenerServiceProtocol
++    private let currentUserID: String
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+@@
+-        listenerService: MessageListenerServiceProtocol,
+-        currentUserID: String
++        listenerService: MessageListenerServiceProtocol,
++        currentUserID: String
+     ) {
+         self.aiService = aiService
+         self.localDataManager = localDataManager
+         self.messageRepository = messageRepository
+         self.conversationRepository = conversationRepository
+         self.listenerService = listenerService
+         self.currentUserID = currentUserID
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+@@
+-                try await conversationRepository.updateAICategory(
+-                    conversationID: message.conversationID,
+-                    category: category
+-                )
++                try await conversationRepository.updateAICategory(
++                    conversationID: message.conversationID,
++                    category: category
++                )
+ 
+                 let localCategory = LocalMessageCategory(rawValue: category.rawValue)
+ 
+                 try await MainActor.run {
+                     try localDataManager.updateMessageAIData(
+@@
+                     try localDataManager.updateConversationCategory(
+                         conversationID: message.conversationID,
+                         category: localCategory
+                     )
+                 }
++
++                listenerService.notifyMessageUpdated(conversationID: message.conversationID)
++                listenerService.notifyConversationUpdated()
+             } catch {
+                 #if DEBUG
+                 print("[Categorization] Failed to process message \(message.id): \(error.localizedDescription)")
+                 #endif
+                 continue
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+@@
+-                try await conversationRepository.updateAICategory(
+-                    conversationID: message.conversationID,
+-                    category: category
+-                )
+-
+-                let localCategory = LocalMessageCategory(rawValue: category.rawValue)
+-
+-                try await MainActor.run {
+-                    try localDataManager.updateMessageAIData(
+-                        messageID: message.id,
+-                        category: localCategory,
+-                        sentiment: analysis.sentiment,
+-                        priority: analysis.priority,
+-                        collaborationScore: analysis.collaborationScore,
+-                        metadata: makeExtractedInfo(from: analysis)
+-                    )
+-
+-                    try localDataManager.updateConversationCategory(
+-                        conversationID: message.conversationID,
+-                        category: localCategory
+-                    )
+-                }
+-
+-                listenerService.notifyMessageUpdated(conversationID: message.conversationID)
+-                listenerService.notifyConversationUpdated()
++                try await conversationRepository.updateAICategory(
++                    conversationID: message.conversationID,
++                    category: category
++                )
++
++                let localCategory = LocalMessageCategory(rawValue: category.rawValue)
++
++                try await MainActor.run {
++                    try localDataManager.updateMessageAIData(
++                        messageID: message.id,
++                        category: localCategory,
++                        sentiment: analysis.sentiment,
++                        priority: analysis.priority,
++                        collaborationScore: analysis.collaborationScore,
++                        metadata: makeExtractedInfo(from: analysis)
++                    )
++
++                    try localDataManager.updateConversationCategory(
++                        conversationID: message.conversationID,
++                        category: localCategory
++                    )
++
++                    listenerService.notifyMessageUpdated(conversationID: message.conversationID)
++                    listenerService.notifyConversationUpdated()
++                }
+             } catch {
+                 #if DEBUG
+                 print("[Categorization] Failed to process message \(message.id): \(error.localizedDescription)")
+                 #endif
+                 continue
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/AI/MessageCategorizationCoordinator.swift
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Review existing data flow for conversations and messages to understand where AI categorization should plug in
+- [-] Implement automatic categorization for new incoming messages and update conversation filters/UI
+- [x] Ensure Firestore updates and local caches stay in sync after categorization
+
+---
+
+Firestore sync is now wired up for auto-categorization:
+
+- `MessageRepository` gained `updateAIMetadata` so the coordinator can persist AI results onto the message document.
+- `ConversationRepository` now exposes `updateAICategory` to keep the conversation-level category field in Firestore aligned.
+- `LocalDataManager` got helpers to update message/conversation AI info in SwiftData, ensuring local cache stays consistent.
+- `MessageListenerService` can broadcast manual “message” and “conversation” update events so view models refresh immediately after we push changes.
+- `MessageCategorizationCoordinator` now invokes those helpers: after each analysis we write to Firestore, update the local models on the main actor, and emit refresh notifications. I also moved the notification calls inside the main actor block to avoid threading issues.
+
+Next steps: continue with the UI work (category counts, manual override).
+
+---
+
+_**User (2025-10-25 16:41Z)**_
+
+Great. Now complete 3. **Category Filter Enhancements**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Enhancing category filter with counts and uncategorized handling**
+
+I'm updating the conversation list view model to compute and publish counts per category—including nil for All—and track uncategorized conversations. Then, I’ll adjust CategoryFilterView and ConversationListView to display these counts and optionally show a progress indicator when categorization is pending, making the UI more informative and responsive.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/ConversationListViewModel.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/ConversationListViewModel.swift
+@@
+     @Published private(set) var conversations: [ConversationItem] = []
+     @Published private(set) var loadingState: LoadingState = .idle
+     @Published var selectedFilter: MessageCategory? = nil {
+         didSet { applyFilter() }
+     }
++    @Published private(set) var filterCounts: [MessageCategory?: Int] = [:]
++    @Published private(set) var uncategorizedCount: Int = 0
+@@
+             self.allConversations = items.sorted(by: compareConversations)
+-            applyFilter()
++            updateCounts()
++            applyFilter()
+             loadingState = .loaded
+         } catch {
+             loadingState = .failed(error.localizedDescription)
+         }
+     }
++
++    private func updateCounts() {
++        var counts: [MessageCategory?: Int] = [:]
++        counts[nil] = allConversations.count
++        for category in MessageCategory.allCases {
++            counts[category] = allConversations.filter { $0.aiCategory == category }.count
++        }
++        let pendingCount = allConversations.filter { $0.aiCategory == nil }.count
++        filterCounts = counts
++        uncategorizedCount = pendingCount
++    }
+ 
+     private func applyFilter() {
+         if let selectedFilter {
+             conversations = allConversations.filter { $0.aiCategory == selectedFilter }
+         } else {
+             conversations = allConversations
+         }
+     }
+*** End Patch
+```
+
+---
+
+The model made no changes to the file.
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/CategoryFilterView.swift
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/CategoryFilterView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/CategoryFilterView.swift
+@@
+-struct CategoryFilterView: View {
+-    @Binding var selectedCategory: MessageCategory?
+-
+-    private let categories: [MessageCategory?] = [nil, .business, .urgent, .fan, .spam]
++struct CategoryFilterView: View {
++    @Binding var selectedCategory: MessageCategory?
++    let counts: [MessageCategory?: Int]
++    let uncategorizedCount: Int
++
++    private let categories: [MessageCategory?] = [nil, .business, .urgent, .fan, .spam]
+@@
+-                ForEach(categories, id: \.self) { category in
+-                    button(for: category)
+-                }
++                ForEach(categories, id: \.self) { category in
++                    button(for: category)
++                }
++                if uncategorizedCount > 0 {
++                    uncategorizedBadge
++                }
+             }
+             .padding(.horizontal)
+             .padding(.vertical, 8)
+         }
+     }
+ 
+     private func button(for category: MessageCategory?) -> some View {
+         let isSelected = selectedCategory == category
++        let count = counts[category] ?? 0
+         return Button {
+             if isSelected {
+                 selectedCategory = nil
+             } else {
+                 selectedCategory = category
+             }
+         } label: {
+-            Text(title(for: category))
+-                .font(.theme.bodyMedium)
+-                .foregroundStyle(isSelected ? Color.theme.textOnPrimary : Color.theme.textOnSurface)
+-                .padding(.horizontal, 16)
+-                .padding(.vertical, 8)
+-                .background(
+-                    Capsule()
+-                        .fill(isSelected ? Color.theme.secondary : Color.theme.surface.opacity(0.8))
+-                )
++            Text(title(for: category))
++                .font(.theme.bodyMedium)
++                .foregroundStyle(isSelected ? Color.theme.textOnPrimary : Color.theme.textOnSurface)
++                .padding(.horizontal, 16)
++                .padding(.vertical, 8)
++                .background(
++                    Capsule()
++                        .fill(isSelected ? Color.theme.secondary : Color.theme.surface.opacity(0.8))
++                )
++                .overlay(alignment: .topTrailing) {
++                    if count > 0 {
++                        countBadge(count, isSelected: isSelected)
++                            .offset(x: 10, y: -8)
++                    }
++                }
+         }
+         .buttonStyle(.plain)
+     }
+ 
+     private func title(for category: MessageCategory?) -> String {
+@@
+         case .general:
+             return "General"
+         }
+     }
++
++    private func countBadge(_ count: Int, isSelected: Bool) -> some View {
++        Text("\\(count)")
++            .font(.theme.captionMedium)
++            .foregroundStyle(isSelected ? Color.theme.textOnPrimary : Color.theme.secondary)
++            .padding(.horizontal, 6)
++            .padding(.vertical, 2)
++            .background(
++                Capsule()
++                    .fill(isSelected ? Color.theme.secondary.opacity(0.9) : Color.theme.surface)
++            )
++    }
++
++    private var uncategorizedBadge: some View {
++        HStack(spacing: 6) {
++            Text("Categorizing...")
++                .font(.theme.caption)
++                .foregroundStyle(Color.theme.textOnSurface.opacity(0.7))
++            Text("\\(uncategorizedCount)")
++                .font(.theme.captionMedium)
++                .foregroundStyle(Color.theme.secondary)
++                .padding(.horizontal, 6)
++                .padding(.vertical, 2)
++                .background(
++                    Capsule()
++                        .fill(Color.theme.surface.opacity(0.8))
++                )
++        }
++        .padding(.horizontal, 12)
++        .padding(.vertical, 6)
++        .background(
++            Capsule()
++                .stroke(Color.theme.surface.opacity(0.5))
++        )
++    }
+ }
+ 
+ #Preview {
+-    CategoryFilterView(selectedCategory: .constant(.business))
++    CategoryFilterView(
++        selectedCategory: .constant(.business),
++        counts: [.business: 3, nil: 10],
++        uncategorizedCount: 2
++    )
+         .padding(.vertical)
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/CategoryFilterView.swift
+
+---
+
+Invalid patch format
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationListView.swift</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationListView.swift
+@@
+-            CategoryFilterView(selectedCategory: $viewModel.selectedFilter)
++            CategoryFilterView(
++                selectedCategory: $viewModel.selectedFilter,
++                counts: viewModel.filterCounts,
++                uncategorizedCount: viewModel.uncategorizedCount
++            )
+*** End Patch
+```
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/ViewModels/ConversationListViewModel.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Views/Conversations/ConversationListView.swift
+
+---
+
+Tool use: **read_file**
+
+Read file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/App/MessageAIApp.swift
+
+---
+
+Tool use: **todo_write**
+
+## Todo List
+
+- [x] Review existing data flow for conversations and messages to understand where AI categorization should plug in
+- [x] Implement automatic categorization for new incoming messages and update conversation filters/UI
+- [x] Ensure Firestore updates and local caches stay in sync after categorization
+
+---
+
+Category filter upgrades are in place:
+
+- `ConversationListViewModel` now tracks per-category counts plus an “uncategorized” tally and recalculates whenever conversations refresh.
+- `CategoryFilterView` renders those counts next to each pill and shows a “Categorizing…” chip whenever we still have messages awaiting AI metadata.
+- `ConversationListView` passes the new data into the filter so the UI stays in sync.
+
+Both the filter UI and underlying data model update automatically as new analysis results come in. The auto-categorization tasks are complete—next up is the manual override workflow when you’re ready.
+
+---
+
+_**User (2025-10-25 21:08Z)**_
+
+The actual number of the category is not being displayed. What's being displayed is "(count)"
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+
+
+---
+
+
+
+---
+
+
+
+---
+
 
 
 ---

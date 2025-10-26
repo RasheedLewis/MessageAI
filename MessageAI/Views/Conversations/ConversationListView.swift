@@ -48,7 +48,11 @@ struct ConversationListView: View {
 
     private var listView: some View {
         VStack(spacing: 0) {
-            CategoryFilterView(selectedCategory: $viewModel.selectedFilter)
+            CategoryFilterView(
+                selectedCategory: $viewModel.selectedFilter,
+                counts: viewModel.filterCounts,
+                uncategorizedCount: viewModel.uncategorizedCount
+            )
 
             if viewModel.conversations.isEmpty {
                 EmptyStateView(
