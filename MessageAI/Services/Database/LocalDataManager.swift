@@ -313,6 +313,18 @@ final class LocalDataManager {
         try context.save()
     }
 
+    func appendAISuggestionFeedback(
+        conversationID: String,
+        messageID: String,
+        feedback: AISuggestionFeedback
+    ) throws {
+        let message = try message(withID: messageID)
+        var existing = message.aiFeedback ?? []
+        existing.append(feedback)
+        message.aiFeedback = existing
+        try context.save()
+    }
+
     func deleteMessage(withID id: String) throws {
         let message = try message(withID: id)
         let conversation = message.conversation

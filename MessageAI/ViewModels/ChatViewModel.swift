@@ -43,12 +43,25 @@ final class ChatViewModel: ObservableObject {
         let iteration: Int
     }
 
+    enum SuggestionFeedbackVerdict {
+        case positive
+        case negative
+
+        var modelValue: AISuggestionFeedback.Verdict {
+            switch self {
+            case .positive: return .positive
+            case .negative: return .negative
+            }
+        }
+    }
+
     private let conversationID: String
     private let localDataManager: LocalDataManager
     private let messageService: MessageServiceProtocol
     private let listenerService: MessageListenerServiceProtocol
     private let userDirectoryService: UserDirectoryServiceProtocol
     private let aiService: AIServiceProtocol
+    private let messageRepository: MessageRepositoryProtocol
     private let userRepository: UserRepositoryType
     private let currentUserID: String
     private var cancellables: Set<AnyCancellable> = []
@@ -57,6 +70,7 @@ final class ChatViewModel: ObservableObject {
     private var suggestionTask: Task<Void, Never>?
     private var latestRemoteMessages: [LocalMessage] = []
     private var typingPreviewCancellable: AnyCancellable?
+    private var lastSuggestionMessageID: String?
 
     init(
         conversationID: String,
@@ -69,6 +83,7 @@ final class ChatViewModel: ObservableObject {
         self.listenerService = services.messageListenerService
         self.userDirectoryService = services.userDirectoryService
         self.aiService = services.aiService
+        self.messageRepository = services.messageRepository
         self.userRepository = services.userRepository
         self.currentUserID = services.currentUserID
         self.suggestionPreview = prefilledSuggestion ?? ""
@@ -282,6 +297,7 @@ final class ChatViewModel: ObservableObject {
 
                 await MainActor.run {
                     self.finishSuggestion(suggestion: suggestion, errorMessage: nil)
+                    self.lastSuggestionMessageID = lastIncomingMessage?.id
                 }
             } catch {
                 await MainActor.run {
@@ -303,6 +319,49 @@ final class ChatViewModel: ObservableObject {
 
     func dismissSuggestion() {
         resetSuggestionState()
+    }
+
+    func recordFeedback(verdict: SuggestionFeedbackVerdict) {
+        guard let suggestion = currentSuggestion else { return }
+        guard let user = userRepository.currentUser() else { return }
+        guard let targetMessageID = suggestionMessageID() else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let metadata: [String: String] = [
+                    "tone": suggestion.tone,
+                    "format": suggestion.format,
+                    "iteration": String(suggestion.iteration)
+                ]
+
+                let feedback = AISuggestionFeedback(
+                    verdict: verdict.modelValue,
+                    comment: nil,
+                    userId: user.id,
+                    suggestionMetadata: metadata
+                )
+
+                try await messageRepository.appendAISuggestionFeedback(
+                    conversationID: conversationID,
+                    messageID: targetMessageID,
+                    feedback: feedback
+                )
+
+                try await MainActor.run {
+                    try self.localDataManager.appendAISuggestionFeedback(
+                        conversationID: conversationID,
+                        messageID: targetMessageID,
+                        feedback: feedback
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func finishSuggestion(suggestion: AISuggestion?, errorMessage: String?) {
@@ -397,6 +456,15 @@ final class ChatViewModel: ObservableObject {
                     self.suggestionPreview = self.previewText(for: trimmed)
                 }
             }
+    }
+
+    private func suggestionMessageID() -> String? {
+        if let lastSuggestionMessageID {
+            return lastSuggestionMessageID
+        }
+
+        // Fall back to most recent incoming message
+        return latestRemoteMessages.reversed().first { $0.senderID != currentUserID }?.id
     }
 }
 

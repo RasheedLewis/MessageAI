@@ -11,7 +11,26 @@ const FALLBACK_TONE = ToneLevel.FRIENDLY;
 const FALLBACK_FORMAT = ResponseFormat.PARAGRAPH;
 const MAX_HISTORY_COUNT = 8;
 
-const buildSystemPrompt = (creatorProfile = {}) => {
+const formatContextSummary = (context = {}) => {
+    const { category, sentiment, priority } = context;
+    const pieces = [];
+
+    if (category) {
+        pieces.push(`Conversation category: ${category}.`);
+    }
+
+    if (sentiment) {
+        pieces.push(`Current sentiment: ${sentiment}.`);
+    }
+
+    if (typeof priority === "number") {
+        pieces.push(`Priority score: ${priority}.`);
+    }
+
+    return pieces.length > 0 ? pieces.join(" ") : "";
+};
+
+const buildSystemPrompt = (creatorProfile = {}, conversationContext = {}) => {
     const name = creatorProfile.displayName || "Creator";
     const persona = creatorProfile.persona || "Engaging content creator";
     const tone = creatorProfile.defaultTone || FALLBACK_TONE;
@@ -38,12 +57,15 @@ const buildSystemPrompt = (creatorProfile = {}) => {
 ${signature}` :
         "";
 
+    const contextSummary = formatContextSummary(conversationContext);
+
     return [
         `${name} Persona: ${persona}.`,
         `Default Tone: ${tone}.`,
         styleSection,
         samplesSection,
         signatureSection,
+        contextSummary,
         "",
         "You must respond with JSON matching strictly the schema:",
         "type GeneratedReply = {",
@@ -87,9 +109,10 @@ const buildMessages = ({
     latestMessage,
     conversationHistory,
     creatorProfile,
+    conversationContext = {},
     responsePreferences = {},
 }) => {
-    const systemContent = buildSystemPrompt(creatorProfile);
+    const systemContent = buildSystemPrompt(creatorProfile, conversationContext);
     const historyString = formatConversationHistory(conversationHistory);
 
     const preferredTone = responsePreferences.tone || creatorProfile.defaultTone;
@@ -114,6 +137,7 @@ const buildMessages = ({
                 latestMessage,
                 conversationHistory: historyString,
                 preferences: preferenceBlock,
+                metadata: conversationContext,
             }),
         },
     ];

@@ -18,6 +18,11 @@ public protocol MessageRepositoryProtocol {
         messageID: String,
         metadata: AIMetadata
     ) async throws
+    func appendAISuggestionFeedback(
+        conversationID: String,
+        messageID: String,
+        feedback: AISuggestionFeedback
+    ) async throws
     func messageDocumentReference(
         conversationID: String,
         messageID: String
@@ -84,6 +89,17 @@ public final class MessageRepository: MessageRepositoryProtocol {
         let reference = messageDocumentReference(conversationID: conversationID, messageID: messageID)
         try await reference.updateData([
             "aiMetadata": metadata.firestoreData()
+        ])
+    }
+
+    public func appendAISuggestionFeedback(
+        conversationID: String,
+        messageID: String,
+        feedback: AISuggestionFeedback
+    ) async throws {
+        let reference = messageDocumentReference(conversationID: conversationID, messageID: messageID)
+        try await reference.updateData([
+            "aiFeedback": FieldValue.arrayUnion([feedback.firestoreData()])
         ])
     }
 

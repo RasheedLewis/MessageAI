@@ -26,6 +26,93 @@ public struct AIMetadata: Codable, Equatable {
     }
 }
 
+public struct AISuggestionFeedback: Codable, Equatable {
+    public enum Verdict: String, Codable {
+        case positive
+        case negative
+    }
+
+    public var id: String
+    public var verdict: Verdict
+    public var comment: String?
+    public var createdAt: Date
+    public var userId: String
+    public var suggestionMetadata: [String: String]
+
+    public init(
+        id: String = UUID().uuidString,
+        verdict: Verdict,
+        comment: String? = nil,
+        createdAt: Date = Date(),
+        userId: String,
+        suggestionMetadata: [String: String] = [:]
+    ) {
+        self.id = id
+        self.verdict = verdict
+        self.comment = comment
+        self.createdAt = createdAt
+        self.userId = userId
+        self.suggestionMetadata = suggestionMetadata
+    }
+}
+
+extension AISuggestionFeedback {
+    enum CodingKeys: String, CodingKey {
+        case id
+        case verdict
+        case comment
+        case createdAt
+        case userId
+        case suggestionMetadata
+    }
+
+    init?(data: [String: Any]) {
+        guard let id = data["id"] as? String,
+              let verdictRaw = data["verdict"] as? String,
+              let verdict = Verdict(rawValue: verdictRaw),
+              let userId = data["userId"] as? String else {
+            return nil
+        }
+
+        let comment = data["comment"] as? String
+        let suggestionMetadata = data["suggestionMetadata"] as? [String: String] ?? [:]
+
+        let createdAt: Date
+        if let timestamp = data["createdAt"] as? Timestamp {
+            createdAt = timestamp.dateValue()
+        } else if let seconds = data["createdAt"] as? TimeInterval {
+            createdAt = Date(timeIntervalSince1970: seconds)
+        } else {
+            createdAt = Date()
+        }
+
+        self.init(
+            id: id,
+            verdict: verdict,
+            comment: comment,
+            createdAt: createdAt,
+            userId: userId,
+            suggestionMetadata: suggestionMetadata
+        )
+    }
+
+    func firestoreData() -> [String: Any] {
+        var data: [String: Any] = [
+            "id": id,
+            "verdict": verdict.rawValue,
+            "createdAt": Timestamp(date: createdAt),
+            "userId": userId,
+            "suggestionMetadata": suggestionMetadata
+        ]
+
+        if let comment {
+            data["comment"] = comment
+        }
+
+        return data
+    }
+}
+
 // MARK: - Firestore DTOs
 
 extension AIMetadata {

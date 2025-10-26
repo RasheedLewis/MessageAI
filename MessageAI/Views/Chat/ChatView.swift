@@ -111,7 +111,8 @@ struct ChatView: View {
                     suggestion: suggestion,
                     onInsert: viewModel.applySuggestionToDraft,
                     onRegenerate: viewModel.regenerateSuggestion,
-                    onDismiss: viewModel.dismissSuggestion
+                    onDismiss: viewModel.dismissSuggestion,
+                    onFeedback: { verdict in viewModel.recordFeedback(verdict: verdict) }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if let errorMessage = viewModel.suggestionError {
@@ -179,8 +180,10 @@ private struct AISuggestionCard: View {
     let onInsert: () -> Void
     let onRegenerate: () -> Void
     let onDismiss: () -> Void
+    let onFeedback: (ChatViewModel.SuggestionFeedbackVerdict) -> Void
 
     @State private var isExpanded: Bool = true
+    @State private var hasSubmittedFeedback = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -224,6 +227,8 @@ private struct AISuggestionCard: View {
                 .buttonStyle(.secondaryThemed)
             }
             .padding(.top, 4)
+
+            feedbackButtons
         }
         .padding(16)
         .background(
@@ -278,6 +283,33 @@ private struct AISuggestionCard: View {
         Text("Reasoning: " + suggestion.reasoning)
             .font(.theme.caption)
             .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
+    }
+
+    private var feedbackButtons: some View {
+        HStack(spacing: 12) {
+            Button {
+                guard !hasSubmittedFeedback else { return }
+                onFeedback(.positive)
+                hasSubmittedFeedback = true
+            } label: {
+                Label("Helpful", systemImage: "hand.thumbsup")
+                    .font(.theme.captionMedium)
+            }
+            .buttonStyle(.tertiaryThemed)
+            .disabled(hasSubmittedFeedback)
+
+            Button {
+                guard !hasSubmittedFeedback else { return }
+                onFeedback(.negative)
+                hasSubmittedFeedback = true
+            } label: {
+                Label("Not Quite", systemImage: "hand.thumbsdown")
+                    .font(.theme.captionMedium)
+            }
+            .buttonStyle(.tertiaryThemed)
+            .disabled(hasSubmittedFeedback)
+        }
+        .padding(.top, 4)
     }
 }
 

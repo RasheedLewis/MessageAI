@@ -38,6 +38,7 @@ final class LocalMessage {
     var priority: Int?
     var collaborationScore: Double?
     var metadata: [String: String]
+    var aiFeedback: [AISuggestionFeedback]?
     var syncStatus: LocalSyncStatus
     var syncDirection: LocalSyncDirection
     var syncAttemptCount: Int
@@ -62,6 +63,7 @@ final class LocalMessage {
         priority: Int? = nil,
         collaborationScore: Double? = nil,
         metadata: [String: String] = [:],
+        aiFeedback: [AISuggestionFeedback]? = nil,
         syncStatus: LocalSyncStatus = .pending,
         syncDirection: LocalSyncDirection = .upload,
         syncAttemptCount: Int = 0,
@@ -81,6 +83,7 @@ final class LocalMessage {
         self.priority = priority
         self.collaborationScore = collaborationScore
         self.metadata = metadata
+        self.aiFeedback = aiFeedback
         self.syncStatus = syncStatus
         self.syncDirection = syncDirection
         self.syncAttemptCount = syncAttemptCount

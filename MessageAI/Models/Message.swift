@@ -11,6 +11,7 @@ public struct Message: Identifiable, Codable, Equatable {
     public var status: MessageStatus
     public var readBy: [String: Date]
     public var aiMetadata: AIMetadata?
+    public var aiFeedback: [AISuggestionFeedback]
 
     public init(
         id: String,
@@ -21,7 +22,8 @@ public struct Message: Identifiable, Codable, Equatable {
         timestamp: Date = Date(),
         status: MessageStatus = .sending,
         readBy: [String: Date] = [:],
-        aiMetadata: AIMetadata? = nil
+        aiMetadata: AIMetadata? = nil,
+        aiFeedback: [AISuggestionFeedback] = []
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -32,6 +34,7 @@ public struct Message: Identifiable, Codable, Equatable {
         self.status = status
         self.readBy = readBy
         self.aiMetadata = aiMetadata
+        self.aiFeedback = aiFeedback
     }
 }
 
@@ -48,6 +51,7 @@ extension Message {
         case status
         case readBy
         case aiMetadata
+        case aiFeedback
     }
 
     public init?(documentID: String, data: [String: Any]) {
@@ -100,6 +104,13 @@ extension Message {
             aiMetadata = AIMetadata(data: aiData)
         }
 
+        let aiFeedbackEntries: [AISuggestionFeedback]
+        if let feedbackArray = data["aiFeedback"] as? [[String: Any]] {
+            aiFeedbackEntries = feedbackArray.compactMap { AISuggestionFeedback(data: $0) }
+        } else {
+            aiFeedbackEntries = []
+        }
+
         self.init(
             id: documentID,
             conversationId: conversationId,
@@ -109,7 +120,8 @@ extension Message {
             timestamp: timestamp,
             status: status,
             readBy: readBy,
-            aiMetadata: aiMetadata
+            aiMetadata: aiMetadata,
+            aiFeedback: aiFeedbackEntries
         )
     }
 
@@ -134,6 +146,10 @@ extension Message {
 
         if let aiMetadata {
             data["aiMetadata"] = aiMetadata.firestoreData()
+        }
+
+        if !aiFeedback.isEmpty {
+            data["aiFeedback"] = aiFeedback.map { $0.firestoreData() }
         }
 
         return data
