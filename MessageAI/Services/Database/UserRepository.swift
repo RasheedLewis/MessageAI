@@ -12,6 +12,7 @@ public protocol UserRepositoryType {
     func updateLastSeen(date: Date) async throws
     func updateCreatorProfile(_ profile: CreatorProfile) async throws
     func updateFCMToken(_ token: String) async throws
+    func refreshCurrentUser() async throws
 }
 
 public protocol UsersCollectionProviding {
@@ -145,6 +146,25 @@ public final class UserRepository: UserRepositoryType {
                 "fcmToken": token,
                 "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
             ], merge: true)
+    }
+
+    public func refreshCurrentUser() async throws {
+        guard let uid = authSession.currentUserID else {
+            throw UserRepositoryError.missingAuthenticatedUser
+        }
+
+        let snapshot = try await Firestore.firestore()
+            .collection(Collection.users.rawValue)
+            .document(uid)
+            .getDocument()
+
+        guard snapshot.exists, let data = snapshot.data(),
+              let user = User(documentID: snapshot.documentID, data: data) else {
+            userSubject.send(nil)
+            return
+        }
+
+        userSubject.send(user)
     }
 }
 

@@ -27,6 +27,7 @@ final class GroupCreationViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
     private var selectedParticipantIDs: Set<String> = []
+    private var stagedAvatarURL: URL?
 
     init(services: ServiceResolver) {
         self.services = services
@@ -85,13 +86,13 @@ final class GroupCreationViewModel: ObservableObject {
 
         do {
             let conversationID = UUID().uuidString
-            var avatarURL: URL?
 
             if let image = groupAvatarImage,
                let data = image.jpegData(compressionQuality: 0.7) {
-                avatarURL = try await services.groupAvatarService.uploadGroupAvatar(
+                stagedAvatarURL = try await services.groupAvatarService.uploadStagedAvatar(
                     data: data,
-                    conversationID: conversationID
+                    userID: services.currentUserID,
+                    progress: nil
                 )
             }
 
@@ -103,7 +104,7 @@ final class GroupCreationViewModel: ObservableObject {
                 participants: participants,
                 type: .group,
                 title: trimmedName,
-                avatarURL: avatarURL,
+                avatarURL: nil,
                 lastMessage: nil,
                 lastMessageTime: nil,
                 unreadCount: [:],
@@ -117,7 +118,7 @@ final class GroupCreationViewModel: ObservableObject {
                 LocalConversation(
                     id: conversation.id,
                     title: trimmedName,
-                    avatarURL: avatarURL,
+                    avatarURL: nil,
                     type: .group,
                     participantIDs: participants,
                     lastMessageTimestamp: nil,
@@ -130,9 +131,26 @@ final class GroupCreationViewModel: ObservableObject {
                 )
             )
 
+            if let stagedURL = stagedAvatarURL {
+                let finalURL = try await services.groupAvatarService.promoteStagedAvatar(
+                    stagedURL: stagedURL,
+                    conversationID: conversationID
+                )
+
+                try await services.conversationRepository.updateConversationAvatar(
+                    conversationID: conversationID,
+                    avatarURL: finalURL
+                )
+
+                try services.localDataManager.updateConversation(id: conversationID) { conversation in
+                    conversation.avatarURL = finalURL
+                    conversation.updatedAt = Date()
+                }
+            }
+
             resetState()
             isSaving = false
-            return conversation.id
+            return conversationID
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -144,6 +162,7 @@ final class GroupCreationViewModel: ObservableObject {
     func resetState() {
         groupName = ""
         groupAvatarImage = nil
+        stagedAvatarURL = nil
         selectedParticipants.removeAll()
         selectedParticipantIDs.removeAll()
         searchResults = []
@@ -198,6 +217,10 @@ final class GroupCreationViewModel: ObservableObject {
         }
 
         isSearching = false
+    }
+
+    func stageAvatarImage(_ image: UIImage) {
+        groupAvatarImage = image
     }
 }
 

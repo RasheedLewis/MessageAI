@@ -5,9 +5,9 @@ import UIKit
 #endif
 
 public protocol ChatMediaUploading {
-    #if canImport(UIKit)
-    func uploadImage(_ image: UIImage, conversationID: String) async throws -> URL
-    #endif
+#if canImport(UIKit)
+    func uploadImage(_ image: UIImage, conversationID: String, progressHandler: ((Double) -> Void)?) async throws -> URL
+#endif
 }
 
 public final class StorageService: ChatMediaUploading {
@@ -25,19 +25,68 @@ public final class StorageService: ChatMediaUploading {
         self.uuid = uuid
     }
 
-    #if canImport(UIKit)
-    public func uploadImage(_ image: UIImage, conversationID: String) async throws -> URL {
+#if canImport(UIKit)
+    public func uploadImage(_ image: UIImage, conversationID: String, progressHandler: ((Double) -> Void)? = nil) async throws -> URL {
         let data = try await compressImage(image)
         let reference = storage.reference(withPath: path(for: conversationID))
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
 
-        _ = try await reference.putDataAsync(data, metadata: metadata)
-        return try await reference.downloadURL()
+        if let progressHandler {
+            return try await uploadWithProgress(reference: reference, data: data, metadata: metadata, progressHandler: progressHandler)
+        } else {
+            _ = try await reference.putDataAsync(data, metadata: metadata)
+            return try await reference.downloadURL()
+        }
     }
-    #endif
 
-    #if canImport(UIKit)
+    private func uploadWithProgress(
+        reference: StorageReference,
+        data: Data,
+        metadata: StorageMetadata,
+        progressHandler: @escaping (Double) -> Void
+    ) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            var uploadTask: StorageUploadTask?
+            var hasResumed = false
+
+            func finish(with result: Result<URL, Error>) {
+                guard !hasResumed else { return }
+                hasResumed = true
+                uploadTask?.removeAllObservers()
+                continuation.resume(with: result)
+            }
+
+            uploadTask = reference.putData(data, metadata: metadata) { _, error in
+                if let error {
+                    finish(with: .failure(error))
+                    return
+                }
+
+                reference.downloadURL { url, error in
+                    if let error {
+                        finish(with: .failure(error))
+                    } else if let url {
+                        finish(with: .success(url))
+                    } else {
+                        finish(with: .failure(StorageServiceError.unknown))
+                    }
+                }
+            }
+
+            uploadTask?.observe(.progress) { snapshot in
+                if let fraction = snapshot.progress?.fractionCompleted {
+                    progressHandler(max(0, min(1, fraction)))
+                }
+            }
+
+            uploadTask?.observe(.failure) { snapshot in
+                let error = snapshot.error ?? StorageServiceError.unknown
+                finish(with: .failure(error))
+            }
+        }
+    }
+
     private func compressImage(_ image: UIImage) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -50,7 +99,7 @@ public final class StorageService: ChatMediaUploading {
             }
         }
     }
-    #endif
+#endif
 
     private func path(for conversationID: String) -> String {
         "\(Constants.imagesPathPrefix)/\(conversationID)/\(uuid()).jpg"
@@ -59,11 +108,14 @@ public final class StorageService: ChatMediaUploading {
 
 public enum StorageServiceError: LocalizedError {
     case compressionFailed
+    case unknown
 
     public var errorDescription: String? {
         switch self {
         case .compressionFailed:
             return "Unable to prepare image for upload."
+        case .unknown:
+            return "An unknown storage error occurred."
         }
     }
 }

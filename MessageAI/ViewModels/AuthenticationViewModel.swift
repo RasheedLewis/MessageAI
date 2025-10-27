@@ -181,6 +181,7 @@ final class AuthenticationViewModel: ObservableObject {
             updatedUser.creatorProfile = updatedCreatorProfile
 
             try await userRepository.createOrUpdateUser(updatedUser)
+            try await userRepository.refreshCurrentUser()
             state = .authenticated
         } catch {
             state = .needsProfileSetup

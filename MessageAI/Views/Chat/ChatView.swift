@@ -23,6 +23,13 @@ struct ChatView: View {
                 onSend: send,
                 mediaSelection: $selectedMediaItem
             )
+            if let stagedImage = viewModel.stagedImage {
+                StagedImagePreview(
+                    stagedImage: stagedImage,
+                    onConfirm: { Task { await viewModel.confirmStagedImageSend() } },
+                    onCancel: viewModel.cancelStagedImage
+                )
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { viewModel.onAppear() }
@@ -512,6 +519,74 @@ private struct MessageRow: View {
         case .failed:
             return "exclamationmark.triangle"
         }
+    }
+}
+
+private struct StagedImagePreview: View {
+    let stagedImage: ChatViewModel.StagedImageType
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Ready to send?")
+                .font(.theme.captionMedium)
+                .foregroundStyle(Color.theme.textOnPrimary)
+
+            Image(uiImage: stagedImage.uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxHeight: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.theme.accent.opacity(0.3), lineWidth: 1)
+                )
+
+            if let remote = stagedImage.remoteURL {
+                Text(remote.absoluteString)
+                    .font(.theme.caption)
+                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
+            }
+
+            if stagedImage.isUploading {
+                ProgressView(value: stagedImage.uploadProgress)
+                    .progressViewStyle(.linear)
+                    .tint(Color.theme.accent)
+            } else if stagedImage.failed {
+                Text(stagedImage.errorMessage ?? "Upload failed. Please retry.")
+                    .font(.theme.caption)
+                    .foregroundStyle(Color.theme.error)
+            }
+
+            HStack(spacing: 12) {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.theme.bodyMedium)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.tertiaryThemed)
+
+                Button(action: onConfirm) {
+                    if stagedImage.isUploading {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    } else {
+                        Text(stagedImage.failed ? "Retry" : "Send")
+                            .font(.theme.bodyMedium)
+                    }
+                }
+                .buttonStyle(.primaryThemed)
+                .disabled(stagedImage.isUploading)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.theme.primaryVariant.opacity(0.95))
+        )
+        .padding(.horizontal)
+        .padding(.bottom, 12)
     }
 }
 

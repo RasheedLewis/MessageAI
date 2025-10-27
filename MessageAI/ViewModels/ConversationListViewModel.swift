@@ -14,6 +14,7 @@ final class ConversationListViewModel: ObservableObject {
         let aiSentiment: String?
         let aiPriority: Int?
         let participantIDs: [String]
+        let avatarURL: URL?
     }
 
     enum LoadingState: Equatable {
@@ -159,7 +160,8 @@ final class ConversationListViewModel: ObservableObject {
                     aiCategory: local.aiCategory.flatMap { MessageCategory(rawValue: $0.rawValue) },
                     aiSentiment: local.aiSentiment,
                     aiPriority: local.aiPriority,
-                    participantIDs: local.participantIDs
+                    participantIDs: local.participantIDs,
+                    avatarURL: local.avatarURL
                 )
             }
             self.allConversations = items.sorted(by: compareConversations)
@@ -210,7 +212,8 @@ final class ConversationListViewModel: ObservableObject {
                 aiCategory: category,
                 aiSentiment: item.aiSentiment,
                 aiPriority: item.aiPriority,
-                participantIDs: item.participantIDs
+                participantIDs: item.participantIDs,
+                avatarURL: item.avatarURL
             )
             allConversations[index] = updated
         }

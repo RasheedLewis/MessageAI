@@ -87,18 +87,43 @@ struct ConversationRowView: View {
         let badgeColor = item.aiCategory.map(categoryColor) ?? Color.theme.secondary
 
         return ZStack {
-            Circle()
-                .fill(Color.theme.surface.opacity(0.9))
+            if let avatarURL = item.avatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    switch phase {
+                    case .empty:
+                        placeholderCircle
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        placeholderCircle
+                    @unknown default:
+                        placeholderCircle
+                    }
+                }
                 .frame(width: 48, height: 48)
+                .clipShape(Circle())
                 .overlay(
                     Circle()
                         .stroke(badgeColor.opacity(0.8), lineWidth: 2)
                 )
                 .shadow(color: badgeColor.opacity(0.45), radius: 8, x: 0, y: 0)
-
-            Text(initials(from: item.title))
-                .font(.theme.captionMedium)
-                .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+            } else {
+                Circle()
+                    .fill(Color.theme.surface.opacity(0.9))
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Circle()
+                            .stroke(badgeColor.opacity(0.8), lineWidth: 2)
+                    )
+                    .shadow(color: badgeColor.opacity(0.45), radius: 8, x: 0, y: 0)
+                    .overlay(
+                        Text(initials(from: item.title))
+                            .font(.theme.captionMedium)
+                            .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                    )
+            }
         }
         .overlay(alignment: .bottomTrailing) {
             Circle()
@@ -110,6 +135,20 @@ struct ConversationRowView: View {
                 )
                 .offset(x: 4, y: 4)
         }
+    }
+
+    private var placeholderCircle: some View {
+        Circle()
+            .fill(Color.theme.surface.opacity(0.9))
+            .overlay(
+                Circle()
+                    .stroke(Color.theme.secondary.opacity(0.2), lineWidth: 1)
+            )
+            .overlay(
+                Text(initials(from: item.title))
+                    .font(.theme.captionMedium)
+                    .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+            )
     }
 
     private func initials(from name: String) -> String {
@@ -178,7 +217,8 @@ struct ConversationRowView: View {
             aiCategory: .business,
             aiSentiment: "positive",
             aiPriority: 80,
-            participantIDs: []
+            participantIDs: [],
+            avatarURL: nil
         ),
         onOverrideCategory: { _ in },
         onClearOverride: {}

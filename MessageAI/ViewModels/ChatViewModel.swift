@@ -48,6 +48,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var suggestionPreview: String = ""
     @Published private(set) var feedbackSelection: SuggestionFeedbackVerdict? = nil
     @Published private(set) var hasSubmittedFeedback: Bool = false
+    @Published private(set) var stagedImage: StagedImageType?
 
     struct AISuggestion: Equatable {
         let reply: String
@@ -89,6 +90,15 @@ final class ChatViewModel: ObservableObject {
     private var latestRemoteMessages: [LocalMessage] = []
     private var typingPreviewCancellable: AnyCancellable?
     private var lastSuggestionMessageID: String?
+    #if canImport(UIKit)
+    private var pendingImageData: Data?
+    #endif
+
+#if canImport(UIKit)
+    typealias StagedImageType = iOSStagedImage
+#else
+    typealias StagedImageType = Never
+#endif
 
     init(
         conversationID: String,
@@ -157,32 +167,98 @@ final class ChatViewModel: ObservableObject {
             guard let image = UIImage(data: data) else {
                 throw ImageAttachmentError.decodingFailed
             }
-
-            try await enqueueImageMessage(with: image)
-            errorMessage = nil
+            pendingImageData = data
+            stagedImage = iOSStagedImage(id: UUID().uuidString, uiImage: image)
         } catch {
-            handleError(error)
+            stagedImageCleanup(errorMessage: ImageAttachmentError.decodingFailed.errorDescription)
         }
     }
 
-    private func enqueueImageMessage(with image: UIImage) async throws {
-        let uploadedURL = try await storageService.uploadImage(image, conversationID: conversationID)
-        let result = await messageService.sendMediaMessage(
-            mediaURL: uploadedURL,
-            conversationID: conversationID,
-            currentUserID: currentUserID,
-            placeholderText: "Photo"
+    func cancelStagedImage() {
+        stagedImageCleanup()
+    }
+
+    func confirmStagedImageSend() async {
+        guard let stagedImage else { return }
+        updateStagedImage(
+            id: stagedImage.id,
+            uiImage: stagedImage.uiImage,
+            remoteURL: stagedImage.remoteURL,
+            isUploading: true,
+            uploadProgress: stagedImage.uploadProgress,
+            failed: false,
+            errorMessage: nil
         )
 
-        switch result {
-        case .success:
-            reloadMessages()
-        case .failure(let serviceError):
-            throw serviceError
+        do {
+            let uploadedURL = try await uploadImage(stagedImage.uiImage) { progress in
+                Task { @MainActor in
+                    self.updateStagedImage(
+                        id: stagedImage.id,
+                        uiImage: stagedImage.uiImage,
+                        remoteURL: nil,
+                        isUploading: true,
+                        uploadProgress: progress,
+                        failed: false,
+                        errorMessage: nil
+                    )
+                }
+            }
+
+            updateStagedImage(
+                id: stagedImage.id,
+                uiImage: stagedImage.uiImage,
+                remoteURL: uploadedURL,
+                isUploading: false,
+                uploadProgress: 1.0,
+                failed: false,
+                errorMessage: nil
+            )
+
+            try await sendUploadedImage(url: uploadedURL)
+            stagedImageCleanup(errorMessage: nil)
+        } catch {
+            updateStagedImage(
+                id: stagedImage.id,
+                uiImage: stagedImage.uiImage,
+                remoteURL: nil,
+                isUploading: false,
+                uploadProgress: 0,
+                failed: true,
+                errorMessage: error.localizedDescription
+            )
         }
+    }
+
+    private func stagedImageCleanup(errorMessage: String? = nil) {
+        stagedImage = nil
+        pendingImageData = nil
+        self.errorMessage = errorMessage
+    }
+
+    private func updateStagedImage(
+        id: String,
+        uiImage: UIImage,
+        remoteURL: URL?,
+        isUploading: Bool,
+        uploadProgress: Double,
+        failed: Bool,
+        errorMessage: String?
+    ) {
+        stagedImage = iOSStagedImage(
+            id: id,
+            uiImage: uiImage,
+            remoteURL: remoteURL,
+            isUploading: isUploading,
+            uploadProgress: uploadProgress,
+            failed: failed,
+            errorMessage: errorMessage
+        )
     }
 #else
     func sendImageAttachmentData(_ data: Data) async { }
+    func cancelStagedImage() {}
+    func confirmStagedImageSend() async {}
 #endif
 
     func retrySending(messageID: String) async {
@@ -546,6 +622,26 @@ final class ChatViewModel: ObservableObject {
         // Fall back to most recent incoming message
         return latestRemoteMessages.reversed().first { $0.senderID != currentUserID }?.id
     }
+
+    private func uploadImage(_ image: UIImage, progress: @escaping (Double) -> Void) async throws -> URL {
+        try await storageService.uploadImage(image, conversationID: conversationID, progressHandler: progress)
+    }
+
+    private func sendUploadedImage(url: URL) async throws {
+        let result = await messageService.sendMediaMessage(
+            mediaURL: url,
+            conversationID: conversationID,
+            currentUserID: currentUserID,
+            placeholderText: "Photo"
+        )
+
+        switch result {
+        case .success:
+            reloadMessages()
+        case .failure(let serviceError):
+            throw serviceError
+        }
+    }
 }
 
 private extension AnyPublisher {
@@ -585,5 +681,26 @@ private extension ChatViewModel {
         }
     }
 }
+
+    struct iOSStagedImage: StagedImageType {
+        let id: String
+        let uiImage: UIImage
+        var remoteURL: URL? = nil
+        var isUploading: Bool = false
+        var uploadProgress: Double = 0
+        var failed: Bool = false
+        var errorMessage: String? = nil
+    }
+
+    protocol StagedImageType: Equatable {
+        var id: String { get }
+        var remoteURL: URL? { get }
+        var isUploading: Bool { get }
+        var uploadProgress: Double { get }
+        var failed: Bool { get }
+        var errorMessage: String? { get }
+    }
+#else
+    typealias StagedImageType = Never
 #endif
 

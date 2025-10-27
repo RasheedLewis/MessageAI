@@ -20,27 +20,36 @@ struct GroupCreationView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("New Group")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", action: dismiss.callAsFunction)
-                    }
+            ZStack(alignment: .top) {
+                Color.theme.primaryVariant.ignoresSafeArea()
 
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(action: createGroup) {
-                            if viewModel.isSaving {
-                                ProgressView()
-                            } else {
-                                Text("Create")
-                                    .font(.theme.button)
+                VStack(spacing: 24) {
+                    header
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            groupDetailsCard
+                            participantSelectionCard
+                            if !viewModel.selectedParticipants.isEmpty {
+                                selectedParticipantsCard
                             }
+                            createButton
                         }
-                        .buttonStyle(viewModel.isSaving ? .primaryDisabledThemed : .primaryThemed)
-                        .disabled(viewModel.isSaving)
+                        .padding(.bottom, 40)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle("New Group")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.theme.primaryVariant, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: dismiss.callAsFunction)
+                        .foregroundStyle(Color.theme.accent)
+                }
+            }
         }
         .task(id: photoItem) {
             await loadPhoto()
@@ -55,98 +64,190 @@ struct GroupCreationView: View {
         }
     }
 
-    private var content: some View {
-        Form {
-            Section("Group Details") {
-                TextField("Group Name", text: $viewModel.groupName)
-                    .font(.theme.body)
+    private var header: some View {
+        VStack(spacing: 8) {
+            Text("Create Group")
+                .font(.theme.navTitle)
+                .foregroundStyle(Color.theme.accent)
+                .shadow(color: Color.theme.accent.opacity(0.4), radius: 8)
+            Capsule()
+                .fill(Color.theme.accent.opacity(0.3))
+                .frame(width: 60, height: 4)
+        }
+    }
 
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    HStack {
-                        if let image = viewModel.groupAvatarImage {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 44, height: 44)
-                                .clipShape(Circle())
-                        } else {
-                            ZStack {
-                                ThemedIcon(systemName: "photo", state: .custom(Color.theme.textOnSurface.opacity(0.8), glow: false), size: 20, withContainer: true)
-                            }
-                        }
+    private var groupDetailsCard: some View {
+        GroupCreationCard(title: "Group Details") {
+            VStack(spacing: 16) {
+                ZStack(alignment: .leading) {
+                    if viewModel.groupName.isEmpty {
+                        Text("Group Name")
+                            .font(.theme.body)
+                            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
+                            .padding(.leading, 20)
+                    }
 
-                        Text(viewModel.groupAvatarImage == nil ? "Add Photo" : "Change Photo")
-                            .foregroundStyle(Color.theme.textOnSurface)
-                            .font(.theme.bodyMedium)
+                    TextField("Group Name", text: $viewModel.groupName)
+                        .font(.theme.body)
+                        .foregroundStyle(Color.theme.textOnPrimary)
+                        .padding()
+                        .background(Color.theme.primaryVariant.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+
+                avatarPicker
+            }
+        }
+    }
+
+    private var avatarPicker: some View {
+        PhotosPicker(selection: $photoItem, matching: .images) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(Color.theme.surface.opacity(0.2))
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.theme.accent.opacity(0.4), lineWidth: 2)
+                        )
+
+                    if let image = viewModel.groupAvatarImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 56, height: 56)
+                            .clipShape(Circle())
+                    } else {
+                        ThemedIcon(systemName: "photo", state: .custom(Color.theme.textOnPrimary.opacity(0.7), glow: false), size: 22)
                     }
                 }
-            }
 
-            if !viewModel.selectedParticipants.isEmpty {
-                Section("Selected Participants") {
-                    ForEach(viewModel.selectedParticipants) { participant in
-                        HStack {
-                            avatar(for: participant)
-                            VStack(alignment: .leading) {
-                                Text(participant.displayName)
-                                    .font(.theme.body)
-                                if let email = participant.email {
-                                    Text(email)
-                                        .font(.theme.caption)
-                                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
-                                }
-                            }
-                            Spacer()
-                            Button {
-                                viewModel.removeParticipant(withID: participant.id)
-                            } label: {
-                                ThemedIcon(systemName: "xmark.circle", state: .custom(Color.theme.disabled, glow: false), size: 16)
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        .padding(.vertical, 4)
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.groupAvatarImage == nil ? "Add Group Photo" : "Change Group Photo")
+                        .font(.theme.bodyMedium)
+                        .foregroundStyle(Color.theme.textOnPrimary)
+                    Text("Recommended 512×512")
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
                 }
+                Spacer()
+                ThemedIcon(systemName: "chevron.right", state: .custom(Color.theme.accent, glow: false), size: 16)
             }
+            .padding(14)
+            .background(Color.theme.primaryVariant.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+    }
 
-            Section("Add Participants") {
+    private var participantSelectionCard: some View {
+        GroupCreationCard(title: "Add Participants") {
+            VStack(spacing: 16) {
                 searchField
 
                 if viewModel.isSearching {
-                    HStack {
+                    HStack(spacing: 12) {
                         ProgressView()
                         Text("Searching…")
-                            .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                            .font(.theme.caption)
+                            .foregroundStyle(Color.theme.textOnPrimary.opacity(0.7))
                     }
                 } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
                     Text("No matches found")
-                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                        .font(.theme.caption)
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
                 } else {
-                    ForEach(viewModel.searchResults) { result in
-                        HStack {
-                            avatar(for: result)
-                            VStack(alignment: .leading) {
-                                Text(result.displayName)
-                                    .font(.theme.body)
-                                if let email = result.email {
-                                    Text(email)
-                                        .font(.theme.caption)
-                                        .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
+                    VStack(spacing: 12) {
+                        ForEach(viewModel.searchResults) { result in
+                            Button {
+                                viewModel.toggleSelection(result)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    avatar(for: result)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(result.displayName)
+                                            .font(.theme.body)
+                                            .foregroundStyle(Color.theme.textOnPrimary)
+                                        if let email = result.email {
+                                            Text(email)
+                                                .font(.theme.caption)
+                                                .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
+                                        }
+                                    }
+                                    Spacer()
+                                    if viewModel.isSelected(result) {
+                                        ThemedIcon(systemName: "checkmark.circle.fill", state: .custom(Color.theme.accent, glow: true), size: 18)
+                                    }
                                 }
+                                .padding(12)
+                                .background(Color.theme.primaryVariant.opacity(0.35))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
-                            Spacer()
-                            if viewModel.isSelected(result) {
-                                ThemedIcon(systemName: "checkmark.circle", state: .active, size: 16)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            viewModel.toggleSelection(result)
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
         }
+    }
+
+    private var selectedParticipantsCard: some View {
+        GroupCreationCard(title: "Selected Participants") {
+            VStack(spacing: 12) {
+                ForEach(viewModel.selectedParticipants) { participant in
+                    HStack(spacing: 12) {
+                        avatar(for: participant)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(participant.displayName)
+                                .font(.theme.bodyMedium)
+                                .foregroundStyle(Color.theme.textOnPrimary)
+                            if let email = participant.email {
+                                Text(email)
+                                    .font(.theme.caption)
+                                    .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
+                            }
+                        }
+                        Spacer()
+                        Button {
+                            viewModel.removeParticipant(withID: participant.id)
+                        } label: {
+                            ThemedIcon(systemName: "xmark.circle.fill", state: .custom(Color.theme.error, glow: false), size: 16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                    .background(Color.theme.primaryVariant.opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+            }
+        }
+    }
+
+    private var createButton: some View {
+        Button(action: createGroup) {
+            HStack(spacing: 12) {
+                ThemedIcon(systemName: "paperplane.fill", state: .custom(Color.theme.accent, glow: true), size: 18)
+                if viewModel.isSaving {
+                    ProgressView()
+                        .tint(Color.theme.accent)
+                } else {
+                    Text("Create Group")
+                        .font(.theme.bodyMedium)
+                        .foregroundStyle(Color.theme.accent)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(Color.theme.accent.opacity(viewModel.isSaving ? 0.15 : 0.25))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.theme.accent.opacity(0.4), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isSaving)
     }
 
     private var searchField: some View {
@@ -157,6 +258,11 @@ struct GroupCreationView: View {
                 .disableAutocorrection(true)
                 .onSubmit { viewModel.searchUsersImmediately() }
                 .font(.theme.body)
+                .foregroundStyle(Color.theme.textOnPrimary)
+                .placeholder(when: viewModel.searchQuery.isEmpty) {
+                    Text("Search by name or email")
+                        .foregroundStyle(Color.theme.textOnPrimary.opacity(0.6))
+                }
             if !viewModel.searchQuery.isEmpty {
                 Button {
                     viewModel.searchQuery = ""
@@ -222,6 +328,32 @@ struct GroupCreationView: View {
             await MainActor.run {
                 viewModel.presentError(error.localizedDescription)
             }
+        }
+    }
+}
+
+private struct GroupCreationCard<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title.uppercased())
+                .font(.theme.captionMedium)
+                .foregroundStyle(Color.theme.textOnPrimary.opacity(0.5))
+                .padding(.bottom, 4)
+
+            VStack(spacing: 12) {
+                content
+            }
+            .padding(16)
+            .background(Color.theme.primary.opacity(0.75))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
     }
 }

@@ -33,6 +33,10 @@ public protocol ConversationRepositoryProtocol {
     ) async throws
 
     func conversationDocumentReference(_ conversationID: String) -> DocumentReference
+    func updateConversationAvatar(
+        conversationID: String,
+        avatarURL: URL?
+    ) async throws
 }
 
 public final class ConversationRepository: ConversationRepositoryProtocol {
@@ -123,6 +127,16 @@ public final class ConversationRepository: ConversationRepositoryProtocol {
 
     public func conversationDocumentReference(_ conversationID: String) -> DocumentReference {
         db.collection(Field.conversations).document(conversationID)
+    }
+
+    public func updateConversationAvatar(
+        conversationID: String,
+        avatarURL: URL?
+    ) async throws {
+        let reference = conversationDocumentReference(conversationID)
+        var updates: [String: Any] = [Field.updatedAt: Timestamp(date: Date())]
+        updates["avatarURL"] = avatarURL?.absoluteString
+        try await reference.updateData(updates)
     }
 }
 

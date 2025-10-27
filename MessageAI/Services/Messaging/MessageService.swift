@@ -58,14 +58,14 @@ final class MessageService: MessageServiceProtocol {
 
     private let dependencies: Dependencies
 
-init(
-    localDataManager: LocalDataManager,
-    conversationRepository: ConversationRepositoryProtocol,
-    messageRepository: MessageRepositoryProtocol,
-    userDirectoryService: UserDirectoryServiceProtocol,
-    idGenerator: @escaping () -> String = { UUID().uuidString },
-    clock: @escaping () -> Date = Date.init
-) {
+    init(
+        localDataManager: LocalDataManager,
+        conversationRepository: ConversationRepositoryProtocol,
+        messageRepository: MessageRepositoryProtocol,
+        userDirectoryService: UserDirectoryServiceProtocol,
+        idGenerator: @escaping () -> String = { UUID().uuidString },
+        clock: @escaping () -> Date = Date.init
+    ) {
         dependencies = Dependencies(
             localDataManager: localDataManager,
             conversationRepository: conversationRepository,
