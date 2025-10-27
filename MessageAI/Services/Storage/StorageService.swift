@@ -1,14 +1,19 @@
 import Foundation
 import FirebaseStorage
+#if canImport(UIKit)
 import UIKit
+#endif
 
 public protocol ChatMediaUploading {
-    func uploadImage(_ image: UIImage, conversationID: String, messageID: String) async throws -> URL
+    #if canImport(UIKit)
+    func uploadImage(_ image: UIImage, conversationID: String) async throws -> URL
+    #endif
 }
 
 public final class StorageService: ChatMediaUploading {
     private enum Constants {
         static let imageCompressionQuality: CGFloat = 0.75
+        static let maxDimension: CGFloat = 1200
         static let imagesPathPrefix = "message_media"
     }
 
@@ -20,21 +25,23 @@ public final class StorageService: ChatMediaUploading {
         self.uuid = uuid
     }
 
-    public func uploadImage(_ image: UIImage, conversationID: String, messageID: String) async throws -> URL {
+    #if canImport(UIKit)
+    public func uploadImage(_ image: UIImage, conversationID: String) async throws -> URL {
         let data = try await compressImage(image)
-        let reference = storage.reference(withPath: path(for: conversationID, messageID: messageID))
+        let reference = storage.reference(withPath: path(for: conversationID))
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
 
         _ = try await reference.putDataAsync(data, metadata: metadata)
         return try await reference.downloadURL()
     }
+    #endif
 
+    #if canImport(UIKit)
     private func compressImage(_ image: UIImage) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let targetSize = CGSize(width: 1200, height: 1200)
-                let scaled = image.scaledPreservingAspectRatio(targetSize: targetSize)
+                let scaled = image.scaledPreservingAspectRatio(targetDimension: Constants.maxDimension)
                 guard let data = scaled.jpegData(compressionQuality: Constants.imageCompressionQuality) else {
                     continuation.resume(throwing: StorageServiceError.compressionFailed)
                     return
@@ -43,9 +50,10 @@ public final class StorageService: ChatMediaUploading {
             }
         }
     }
+    #endif
 
-    private func path(for conversationID: String, messageID: String) -> String {
-        "\(Constants.imagesPathPrefix)/\(conversationID)/\(messageID).jpg"
+    private func path(for conversationID: String) -> String {
+        "\(Constants.imagesPathPrefix)/\(conversationID)/\(uuid()).jpg"
     }
 }
 
@@ -60,12 +68,13 @@ public enum StorageServiceError: LocalizedError {
     }
 }
 
+#if canImport(UIKit)
 private extension UIImage {
-    func scaledPreservingAspectRatio(targetSize: CGSize) -> UIImage {
-        let widthScale = targetSize.width / size.width
-        let heightScale = targetSize.height / size.height
-        let scaleFactor = min(widthScale, heightScale, 1.0)
+    func scaledPreservingAspectRatio(targetDimension: CGFloat) -> UIImage {
+        let maxDimension = max(size.width, size.height)
+        guard maxDimension > targetDimension else { return self }
 
+        let scaleFactor = targetDimension / maxDimension
         let scaledSize = CGSize(
             width: size.width * scaleFactor,
             height: size.height * scaleFactor
@@ -77,3 +86,4 @@ private extension UIImage {
         }
     }
 }
+#endif

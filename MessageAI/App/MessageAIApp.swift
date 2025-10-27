@@ -32,6 +32,7 @@ struct MessageAIApp: App {
             messageRepository: messageRepository,
             userDirectoryService: userDirectoryService
         )
+        let storageService = StorageService()
         let currentUserID = AuthenticationService.shared.currentUser?.uid ?? "demo"
         let categorizationCoordinator = MessageCategorizationCoordinator(
             aiService: AIService.shared,
@@ -50,6 +51,7 @@ struct MessageAIApp: App {
             userSearchService: UserSearchService(),
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
+            storageService: storageService,
             aiService: AIService.shared,
             categorizationCoordinator: categorizationCoordinator,
             currentUserID: currentUserID,

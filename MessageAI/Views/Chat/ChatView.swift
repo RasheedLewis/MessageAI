@@ -36,7 +36,14 @@ struct ChatView: View {
         .onChange(of: selectedMediaItem) { newValue in
             guard let newValue else { return }
             Task {
-                await handleAttachmentSelection(newValue)
+                do {
+                    guard let data = try await newValue.loadTransferable(type: Data.self) else {
+                        throw ChatAttachmentError.loadFailed
+                    }
+                    await viewModel.sendImageAttachmentData(data)
+                } catch {
+                    viewModel.reportAttachmentError(error.localizedDescription)
+                }
                 await MainActor.run { selectedMediaItem = nil }
             }
         }
@@ -165,7 +172,7 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(viewModel.messages) { message in
-                        MessageRowView(message: message)
+                        MessageRow(message: message)
                             .id(message.id)
                     }
 
@@ -202,9 +209,16 @@ struct ChatView: View {
             await viewModel.sendMessage()
         }
     }
+}
 
-    private func handleAttachmentSelection(_ item: PhotosPickerItem) async {
-        // Placeholder to be implemented in Storage/Image message subtasks.
+private enum ChatAttachmentError: LocalizedError {
+    case loadFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .loadFailed:
+            return "Unable to load the selected image."
+        }
     }
 }
 
@@ -415,7 +429,7 @@ private struct ErrorBanner: View {
     }
 }
 
-private struct MessageRowView: View {
+private struct MessageRow: View {
     let message: ChatViewModel.ChatMessage
 
     var body: some View {
@@ -431,21 +445,28 @@ private struct MessageRowView: View {
         .padding(.horizontal, 4)
     }
 
+    @ViewBuilder
     private var bubble: some View {
         VStack(alignment: message.isCurrentUser ? .trailing : .leading, spacing: 4) {
             if !message.isCurrentUser, let senderName = message.senderName {
                 Text(senderName)
-                        .font(.theme.captionMedium)
+                    .font(.theme.captionMedium)
                     .foregroundStyle(Color.theme.textOnSurface.opacity(0.6))
             }
 
-            Text(message.content)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .foregroundColor(Color.theme.textOnPrimary)
-                .background(bubbleBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: message.isCurrentUser ? Color.theme.secondary.opacity(0.35) : Color.theme.accent.opacity(0.45), radius: message.isCurrentUser ? 10 : 14, x: 0, y: 6)
+            if let mediaURL = message.mediaURL {
+                ImageMessageView(url: mediaURL, isCurrentUser: message.isCurrentUser, status: message.status)
+            }
+
+            if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(message.content)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .foregroundColor(Color.theme.textOnPrimary)
+                    .background(bubbleBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: message.isCurrentUser ? Color.theme.secondary.opacity(0.35) : Color.theme.accent.opacity(0.45), radius: message.isCurrentUser ? 10 : 14, x: 0, y: 6)
+            }
 
             HStack(spacing: 4) {
                 Text(message.timestamp, style: .time)
@@ -486,9 +507,7 @@ private struct MessageRowView: View {
             return "clock"
         case .sent:
             return "checkmark"
-        case .delivered:
-            return "checkmark.circle"
-        case .read:
+        case .delivered, .read:
             return "checkmark.circle"
         case .failed:
             return "exclamationmark.triangle"

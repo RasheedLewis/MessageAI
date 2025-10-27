@@ -10,6 +10,7 @@ final class ServiceResolver: ObservableObject {
     @Published var userSearchService: UserSearchServiceProtocol
     @Published var userDirectoryService: UserDirectoryServiceProtocol
     @Published var groupAvatarService: GroupAvatarUploading
+    @Published var storageService: ChatMediaUploading
     @Published var aiService: AIServiceProtocol
     @Published var categorizationCoordinator: MessageCategorizationCoordinating
     @Published var currentUserID: String
@@ -24,6 +25,7 @@ final class ServiceResolver: ObservableObject {
         userSearchService: UserSearchServiceProtocol,
         userDirectoryService: UserDirectoryServiceProtocol,
         groupAvatarService: GroupAvatarUploading,
+        storageService: ChatMediaUploading,
         aiService: AIServiceProtocol,
         categorizationCoordinator: MessageCategorizationCoordinating,
         currentUserID: String,
@@ -37,6 +39,7 @@ final class ServiceResolver: ObservableObject {
         self.userSearchService = userSearchService
         self.userDirectoryService = userDirectoryService
         self.groupAvatarService = groupAvatarService
+        self.storageService = storageService
         self.aiService = aiService
         self.categorizationCoordinator = categorizationCoordinator
         self.currentUserID = currentUserID
@@ -66,6 +69,7 @@ final class ServiceResolver: ObservableObject {
             userSearchService: UserSearchService(),
             userDirectoryService: userDirectoryService,
             groupAvatarService: GroupAvatarService(),
+            storageService: StorageService(),
             aiService: AIServiceMock(),
             categorizationCoordinator: MessageCategorizationCoordinator.mock,
             currentUserID: "demo",

@@ -1,5 +1,11 @@
 import Combine
 import Foundation
+#if canImport(PhotosUI)
+import PhotosUI
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 final class ChatViewModel: ObservableObject {
@@ -11,6 +17,15 @@ final class ChatViewModel: ObservableObject {
         let timestamp: Date
         let isCurrentUser: Bool
         let status: LocalMessageStatus
+        let mediaURL: URL?
+
+        var isImage: Bool {
+            mediaURL != nil
+        }
+
+        static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
+            lhs.id == rhs.id && lhs.content == rhs.content && lhs.senderID == rhs.senderID && lhs.mediaURL == rhs.mediaURL
+        }
     }
 
     struct Participant: Identifiable, Equatable {
@@ -66,6 +81,7 @@ final class ChatViewModel: ObservableObject {
     private let messageRepository: MessageRepositoryProtocol
     private let userRepository: UserRepositoryType
     private let currentUserID: String
+    private let storageService: ChatMediaUploading
     private var cancellables: Set<AnyCancellable> = []
     private var participantNames: [String: String] = [:]
     private var suggestionIteration: Int = 0
@@ -88,6 +104,7 @@ final class ChatViewModel: ObservableObject {
         self.messageRepository = services.messageRepository
         self.userRepository = services.userRepository
         self.currentUserID = services.currentUserID
+        self.storageService = services.storageService
         self.suggestionPreview = prefilledSuggestion ?? ""
         observeMessageUpdates()
         observeDraftChanges()
@@ -134,6 +151,59 @@ final class ChatViewModel: ObservableObject {
         resetSuggestionState()
     }
 
+#if canImport(UIKit)
+    func sendImageAttachmentData(_ data: Data) async {
+        do {
+            guard let image = UIImage(data: data) else {
+                throw ImageAttachmentError.decodingFailed
+            }
+
+            try await enqueueImageMessage(with: image)
+            errorMessage = nil
+        } catch {
+            handleError(error)
+        }
+    }
+
+    private func enqueueImageMessage(with image: UIImage) async throws {
+        let uploadedURL = try await storageService.uploadImage(image, conversationID: conversationID)
+        let result = await messageService.sendMediaMessage(
+            mediaURL: uploadedURL,
+            conversationID: conversationID,
+            currentUserID: currentUserID,
+            placeholderText: "Photo"
+        )
+
+        switch result {
+        case .success:
+            reloadMessages()
+        case .failure(let serviceError):
+            throw serviceError
+        }
+    }
+#else
+    func sendImageAttachmentData(_ data: Data) async { }
+#endif
+
+    func retrySending(messageID: String) async {
+        let result = await messageService.retryPendingMessage(
+            messageID: messageID,
+            conversationID: conversationID,
+            currentUserID: currentUserID
+        )
+
+        if case .failure(let error) = result {
+            handleError(error)
+        } else {
+            errorMessage = nil
+        }
+        reloadMessages()
+    }
+
+    func reportAttachmentError(_ message: String) {
+        errorMessage = message
+    }
+
     private func observeMessageUpdates() {
         listenerService.messageUpdatesPublisher
             .filter { [weak self] conversationID in
@@ -166,7 +236,8 @@ final class ChatViewModel: ObservableObject {
             senderName: participantNames[local.senderID],
             timestamp: local.timestamp,
             isCurrentUser: local.senderID == currentUserID,
-            status: local.status
+            status: local.status,
+            mediaURL: local.mediaURL
         )
     }
 
@@ -497,4 +568,22 @@ private extension AnyPublisher {
         }
     }
 }
+
+#if canImport(UIKit)
+private extension ChatViewModel {
+    enum ImageAttachmentError: LocalizedError {
+        case loadFailed
+        case decodingFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .loadFailed:
+                return "Unable to load the selected image."
+            case .decodingFailed:
+                return "The selected file is not a supported image."
+            }
+        }
+    }
+}
+#endif
 
