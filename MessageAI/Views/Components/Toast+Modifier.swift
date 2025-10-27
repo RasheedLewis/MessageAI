@@ -38,3 +38,4 @@ extension View {
         modifier(ToastModifier(isPresented: isPresented, duration: duration, toast: content))
     }
 }
+

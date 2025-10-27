@@ -1,19 +1,41 @@
 import SwiftUI
+import PhotosUI
 
 struct MessageInputView: View {
     @Binding var text: String
     var isSending: Bool
     var onSend: () -> Void
     var onAttachment: (() -> Void)?
+    private let mediaSelection: Binding<PhotosPickerItem?>?
 
     @State private var isPressingSend = false
 
     private let placeholder = "Message"
 
+    init(
+        text: Binding<String>,
+        isSending: Bool,
+        onSend: @escaping () -> Void,
+        onAttachment: (() -> Void)? = nil,
+        mediaSelection: Binding<PhotosPickerItem?>? = nil
+    ) {
+        self._text = text
+        self.isSending = isSending
+        self.onSend = onSend
+        self.onAttachment = onAttachment
+        self.mediaSelection = mediaSelection
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
-                if let onAttachment {
+                if let mediaSelection {
+                    PhotosPicker(selection: mediaSelection, matching: .images) {
+                        ThemedIcon(systemName: "paperclip", state: .custom(Color.theme.disabled, glow: false), size: 18)
+                    }
+                    .disabled(isSending)
+                    .buttonStyle(.plain)
+                } else if let onAttachment {
                     Button(action: onAttachment) {
                         ThemedIcon(systemName: "paperclip", state: .custom(Color.theme.disabled, glow: false), size: 18)
                     }
@@ -108,7 +130,8 @@ private struct GrowingTextView: View {
         text: .constant("Hello world"),
         isSending: false,
         onSend: {},
-        onAttachment: {}
+        onAttachment: {},
+        mediaSelection: .constant(nil)
     )
 }
 

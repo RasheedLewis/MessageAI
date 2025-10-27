@@ -1,8 +1,10 @@
 import SwiftUI
+import PhotosUI
 
 struct ChatView: View {
     @StateObject private var viewModel: ChatViewModel
     @Namespace private var bottomID
+    @State private var selectedMediaItem: PhotosPickerItem?
 
     init(conversationID: String, services: ServiceResolver) {
         _viewModel = StateObject(wrappedValue: ChatViewModel(conversationID: conversationID, services: services))
@@ -19,7 +21,7 @@ struct ChatView: View {
                 text: $viewModel.draftText,
                 isSending: viewModel.isSending,
                 onSend: send,
-                onAttachment: nil
+                mediaSelection: $selectedMediaItem
             )
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -29,6 +31,13 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             if let errorMessage = viewModel.errorMessage {
                 ErrorBanner(message: errorMessage)
+            }
+        }
+        .onChange(of: selectedMediaItem) { newValue in
+            guard let newValue else { return }
+            Task {
+                await handleAttachmentSelection(newValue)
+                await MainActor.run { selectedMediaItem = nil }
             }
         }
     }
@@ -192,6 +201,10 @@ struct ChatView: View {
         Task {
             await viewModel.sendMessage()
         }
+    }
+
+    private func handleAttachmentSelection(_ item: PhotosPickerItem) async {
+        // Placeholder to be implemented in Storage/Image message subtasks.
     }
 }
 
