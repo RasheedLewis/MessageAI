@@ -801,3 +801,123 @@ Fixed the SwiftUI type error by restoring `chatBackground` to a computed propert
 
 ---
 
+_**User (2025-10-26 23:40Z)**_
+
+Now work on 2. **Storage Service**
+
+---
+
+_**Assistant (gpt-5-codex)**_
+
+<think><details><summary>Thought Process</summary>**Checking for existing StorageService file**</details></think>
+
+---
+
+Could not find file '/Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Storage/StorageService.swift' in the workspace.
+
+---
+
+Tool use: **edit_file**
+
+
+<details><summary>Edit file: /Users/rasheedlewis/Workspace/gauntlet/MessageAI/MessageAI/Services/Storage/StorageService.swift</summary>
+
+**Chunk 1**
+Lines added: 79, lines removed: 1
+
+```diff
+@@ -1,1 +1,79 @@
+- 
++ import Foundation
++ import FirebaseStorage
++ import UIKit
++ 
++ public protocol ChatMediaUploading {
++     func uploadImage(_ image: UIImage, conversationID: String, messageID: String) async throws -> URL
++ }
++ 
++ public final class StorageService: ChatMediaUploading {
++     private enum Constants {
++         static let imageCompressionQuality: CGFloat = 0.75
++         static let imagesPathPrefix = "message_media"
++     }
++ 
++     private let storage: Storage
++     private let uuid: () -> String
++ 
++     public init(storage: Storage = Storage.storage(), uuid: @escaping () -> String = { UUID().uuidString }) {
++         self.storage = storage
++         self.uuid = uuid
++     }
++ 
++     public func uploadImage(_ image: UIImage, conversationID: String, messageID: String) async throws -> URL {
++         let data = try await compressImage(image)
++         let reference = storage.reference(withPath: path(for: conversationID, messageID: messageID))
++         let metadata = StorageMetadata()
++         metadata.contentType = "image/jpeg"
++ 
++         _ = try await reference.putDataAsync(data, metadata: metadata)
++         return try await reference.downloadURL()
++     }
++ 
++     private func compressImage(_ image: UIImage) async throws -> Data {
++         try await withCheckedThrowingContinuation { continuation in
++             DispatchQueue.global(qos: .userInitiated).async {
++                 let targetSize = CGSize(width: 1200, height: 1200)
++                 let scaled = image.scaledPreservingAspectRatio(targetSize: targetSize)
++                 guard let data = scaled.jpegData(compressionQuality: Constants.imageCompressionQuality) else {
++                     continuation.resume(throwing: StorageServiceError.compressionFailed)
++                     return
++                 }
++                 continuation.resume(returning: data)
++             }
++         }
++     }
++ 
++     private func path(for conversationID: String, messageID: String) -> String {
++         "\(Constants.imagesPathPrefix)/\(conversationID)/\(messageID).jpg"
++     }
++ }
++ 
++ public enum StorageServiceError: LocalizedError {
++     case compressionFailed
++ 
++     public var errorDescription: String? {
++         switch self {
++         case .compressionFailed:
++             return "Unable to prepare image for upload."
++         }
++     }
++ }
++ 
++ private extension UIImage {
++     func scaledPreservingAspectRatio(targetSize: CGSize) -> UIImage {
++         let widthScale = targetSize.width / size.width
++         let heightScale = targetSize.height / size.height
++         let scaleFactor = min(widthScale, heightScale, 1.0)
++ 
++         let scaledSize = CGSize(
++             width: size.width * scaleFactor,
++             height: size.height * scaleFactor
++         )
++ 
++         let renderer = UIGraphicsImageRenderer(size: scaledSize)
++         return renderer.image { _ in
++             self.draw(in: CGRect(origin: .zero, size: scaledSize))
++         }
++     }
++ }
+```
+
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Summarizing new file creation**</details></think>
+
+---
+
+Storage service subtask done: added `StorageService` under `Services/Storage`, providing `ChatMediaUploading.uploadImage(...)` with JPEG compression, size capping, Firebase Storage upload, and download URL retrieval. Includes a custom `StorageServiceError` and helper for aspect-ratio-preserving scaling. Ready for integration in the next steps (messaging + retries).
+
+---
+
